@@ -46,10 +46,7 @@ services:
       - FLOWS_DIR=/app/flows
       - YOLO_MODEL=${YOLO_MODEL:-/app/weights/roboflow_logistics.pt}
       - ROBOT_TCP_OFFSET=${ROBOT_TCP_OFFSET:-0,0,0.055,0,0,0}
-      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
-      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     env_file: .env
     volumes:
       - ./backend/src/data/flow:/app/flows  # Persist flow definitions
