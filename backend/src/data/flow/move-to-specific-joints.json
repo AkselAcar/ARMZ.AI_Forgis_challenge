@@ -1,0 +1,38 @@
+{
+  "id": "move-to-specific-joints",
+  "name": "Move to Specific Joints",
+  "initial_state": "start_move",
+  "loop": false,
+  "variables": {},
+  "states": [
+    {
+      "name": "start_move",
+      "steps": [
+        {
+          "id": "s1",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [
+              -172.0,
+              -134.0,
+              -77.0,
+              -58.0,
+              89.0,
+              -14.72
+            ]
+          },
+          "store_result": null,
+          "error_handling": {
+            "strategy": "stop",
+            "max_retries": 3,
+            "retry_delay_ms": 1000,
+            "fallback_skill": null
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": []
+}

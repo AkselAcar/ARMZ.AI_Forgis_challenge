@@ -1,0 +1,49 @@
+{
+  "id": "conveyor-pick-and-place",
+  "name": "Conveyor Pick and Place",
+  "initial_state": "pick_and_place_object",
+  "loop": false,
+  "variables": {},
+  "states": [
+    {
+      "name": "pick_and_place_object",
+      "steps": [
+        {
+          "id": "s1",
+          "skill": "pick_and_place",
+          "executor": "robot",
+          "params": {
+            "pick_pose": [
+              -0.449,
+              0.05,
+              0.103,
+              0.0,
+              3.14,
+              0.0
+            ],
+            "place_pose": [
+              -0.041,
+              -0.318,
+              0.174,
+              0.0,
+              3.14,
+              0.0
+            ],
+            "approach_z_offset": 0.15,
+            "vacuum_pin": 0,
+            "vacuum_settle_s": 0.3
+          },
+          "store_result": null,
+          "error_handling": {
+            "strategy": "stop",
+            "max_retries": 3,
+            "retry_delay_ms": 1000,
+            "fallback_skill": null
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": []
+}

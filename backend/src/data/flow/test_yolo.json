@@ -1,0 +1,191 @@
+{
+  "id": "step5_box_detection_zone_a",
+  "name": "Step 5: Simple AI Box Loop to Zone A",
+  "initial_state": "start_midair",
+  "loop": true,
+  "variables": {
+    "midair_joints": [-172, -134, -77, -58, 89, -14.72],
+    "pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0],
+    "approach_z_offset": 0.15,
+    "place_positions": {
+      "Zone_A": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0], [0.065, -0.318, 0.174, 0.0, 3.14, 0.0], [-0.015, -0.426, 0.174, 2.20, 2.26, 0.0]]
+    }
+  },
+  "states": [
+    {
+      "name": "start_midair",
+      "steps": [
+        {
+          "id": "go_midair_1",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{midair_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "vision_check",
+      "steps": [
+        {
+          "id": "detect_box",
+          "skill": "get_bounding_box",
+          "executor": "camera",
+          "params": {
+            "object_class": "box",
+            "confidence_threshold": 0.3
+          },
+          "store_result": "vision_data",
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "execute_pick",
+      "steps": [
+        {
+          "id": "pick_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_on",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": true
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "transition",
+      "steps": [
+        {
+          "id": "pick_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "place",
+      "steps": [
+        {
+          "id": "place_approach",
+          "skill": "palletize",
+          "executor": "robot",
+          "params": {
+            "positions_var": "place_positions",
+            "key": "Zone_A",
+            "default_key": "Zone_A",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "store_result": "place_target",
+          "timeout_ms": 30000
+        },
+        {
+          "id": "place_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_off",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": false
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "end_midair",
+      "steps": [
+        {
+          "id": "place_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "restart_conveyor",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 4,
+            "value": true
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "reset_io_conveyor",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 4,
+            "value": false
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "sequential",
+      "from_state": "start_midair",
+      "to_state": "vision_check"
+    },
+    {
+      "type": "conditional",
+      "from_state": "vision_check",
+      "to_state": "vision_check",
+      "condition": "{{vision_data.found}} == false"
+    },
+    {
+      "type": "conditional",
+      "from_state": "vision_check",
+      "to_state": "execute_pick",
+      "condition": "{{vision_data.found}} == true"
+    },
+    {
+      "type": "sequential",
+      "from_state": "execute_pick",
+      "to_state": "transition"
+    },
+    {
+      "type": "sequential",
+      "from_state": "transition",
+      "to_state": "place"
+    },
+    {
+      "type": "sequential",
+      "from_state": "place",
+      "to_state": "end_midair"
+    }
+  ]
+}

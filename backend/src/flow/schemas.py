@@ -59,8 +59,8 @@ class StateSchema(BaseModel):
 class TransitionSchema(BaseModel):
     """Transition between states."""
 
-    type: Literal["sequential", "conditional"] = Field(
-        default="sequential", description="Transition type"
+    type: Literal["sequential", "conditional", "immediate"] = Field(
+        default="sequential", description="Transition type (immediate is treated as sequential)"
     )
     from_state: str = Field(..., min_length=1, description="Source state name")
     to_state: str = Field(..., min_length=1, description="Target state name")

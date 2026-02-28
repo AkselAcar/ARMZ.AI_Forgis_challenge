@@ -380,14 +380,14 @@ async def resume_flow():
 
 
 # Default flow loaded when no AI generation is implemented.
-_DEFAULT_FLOW_ID = "dobot_test_pick"
+_DEFAULT_FLOW_ID = "test_vision_speed"
 
 
 # ── Gemini system prompt ─────────────────────────────────────────────────────
 _GEMINI_SYSTEM_PROMPT = """\
 You are an expert robot-programming assistant for the ARMZ.AI platform.
-Your job is to help users build automation flows for a Dobot Nova 5 robotic arm
-equipped with a Covvi prosthetic hand, IO modules, and a camera.
+Your job is to help users build automation flows for a UR3 robotic arm
+equipped with a vacuum gripper, IO modules, and a camera.
 
 ## RESPONSE ENVELOPE
 Always reply with a JSON object:
@@ -428,55 +428,112 @@ Always reply with a JSON object:
 {
   "from_state": "<state-name>",
   "to_state": "<state-name>",
-  "type": "immediate" | "conditional",
+  "type": "sequential" | "conditional" | "immediate",
   "condition": null | "<python-expression referencing variables.*>"
 }
 ```
 
-## AVAILABLE SKILLS (13 total)
+## AVAILABLE SKILLS
 
 ### Executor: "robot"
-1. **move_joint** – Joint-space move
-   params: { joints: number[6], speed?: 0-100 (default 30), acceleration?: 0-100 (default 30) }
-2. **move_linear** – Cartesian linear move
-   params: { x, y, z: mm; rx?, ry?, rz?: degrees; speed?: 0-100 (default 30); acceleration?: 0-100 (default 30) }
-3. **palletize** – Palletize helper
-   params: { corner_a, corner_b, corner_c: {x,y,z,rx,ry,rz}; rows: int; cols: int; approach_height?: mm; current_index?: int }
+1. **move_joint** – Joint-space move (degrees)
+   params: { "target_joints_deg": [j0, j1, j2, j3, j4, j5],  // REQUIRED, 6 floats in DEGREES
+              "velocity"?: 0.1-2.0 (default 2.0, rad/s),
+              "acceleration"?: 0.1-2.0 (default 2.0, rad/s²),
+              "tolerance_deg"?: 0.1-10.0 (default 1.0) }
+
+2. **move_linear** – Cartesian straight-line move
+   params: { "target_pose": [x, y, z, rx, ry, rz],  // REQUIRED, 6 floats — metres & radians
+              "z_offset"?: float (default 0.0, metres, positive=up),
+              "velocity"?: 0.01-1.0 (default 0.8, m/s),
+              "acceleration"?: 0.01-3.0 (default 1.2, m/s²) }
+
+3. **palletize** – Pop next position from a list variable
+   params: { "positions_var": string,   // REQUIRED — name of flow variable holding positions map
+              "key": string,             // REQUIRED — zone key e.g. "Zone_A"
+              "default_key"?: string (default "default"),
+              "z_offset"?: float (default 0.0, metres),
+              "velocity"?: 0.01-1.0 (default 0.8),
+              "acceleration"?: 0.01-3.0 (default 1.2) }
+
+4. **set_tool_output** – Control tool digital output (vacuum gripper)
+   params: { "index": int (≥1),   // REQUIRED — 1=close gripper, 2=open on dual-solenoid
+              "status"?: 0|1 (default 1) }
+
+5. **pick_and_place** – Complete pick-and-place cycle (compound skill)
+   params: { "pick_pose": [x,y,z,rx,ry,rz],    // REQUIRED, metres & radians
+              "place_pose": [x,y,z,rx,ry,rz],   // REQUIRED, metres & radians
+              "approach_z_offset"?: float (default 0.15, metres above pick/place),
+              "vacuum_pin"?: 0-7 (default 0),
+              "vacuum_settle_s"?: 0-2 (default 0.3),
+              "pick_velocity"?: 0.01-1.0 (default 0.5, m/s),
+              "place_velocity"?: 0.01-1.0 (default 0.5, m/s),
+              "acceleration"?: 0.01-3.0 (default 1.2, m/s²) }
+   NOTE: This uses both "robot" AND "io_robot" executors internally.
+   Set executor to "robot" in the step.
 
 ### Executor: "camera"
-4. **get_bounding_box** – Local YOLOv8 detection (fast, ~50-200 ms)
-   params: { label: string; camera_id?: string (default "bridge") }
+5. **get_bounding_box** – Local YOLOv8 detection (fast, ~50-200 ms)
+   params: { "object_class": string,  // REQUIRED — class name to detect e.g. "bottle", "box"
+              "confidence_threshold"?: 0.0-1.0 (default 0.5) }
    sets: variables.bbox = {x_center, y_center, width, height, confidence, label}
-5. **get_label** – Vision-LLM label via GPT-4o (slower, 2-5 s)
-   params: { prompt: string; camera_id?: string (default "bridge") }
+
+6. **get_label** – Vision-LLM query via Gemini (2-5 s)
+   params: { "prompt"?: string (default "Read any text visible in the image…"),
+              "use_bbox"?: bool (default true — crop to last bbox),
+              "crop_margin"?: 0.0-0.5 (default 0.1) }
    sets: variables.label = "<text>"
-6. **start_streaming** – Start MJPEG stream
-   params: { camera_id?: string }
-7. **stop_streaming** – Stop MJPEG stream
-   params: { camera_id?: string }
+
+7. **start_streaming** – Start camera MJPEG stream
+   params: { "fps"?: 1-30 (default 15) }
+
+8. **stop_streaming** – Stop camera MJPEG stream
+   params: {}   // no parameters
 
 ### Executor: "hand"
-8. **set_grip** – Open/close whole hand
-   params: { grip_percentage: 0-100 }
-9. **set_finger_positions** – Per-finger control
-   params: { thumb?: 0-100; index?: 0-100; middle?: 0-100; ring?: 0-100; little?: 0-100 }
-10. **grip_until_contact** – Close until force threshold
-    params: { force_threshold?: 0-100 (default 50); timeout?: seconds (default 5); speed?: 0-100 (default 50) }
+9. **set_grip** – Activate a predefined grip posture
+   params: { "grip": string }  // REQUIRED — one of: "POWER", "TRIPOD", "TRIPOD_OPEN",
+            // "PREC_OPEN", "PREC_CLOSED", "TRIGGER", "KEY", "FINGER",
+            // "CYLINDER", "COLUMN", "RELAXED", "GLOVE", "TAP", "GRAB"
 
-### Executor: "io_robot" / "io_machine"
-11. **io_set_digital_output** – Set digital output pin
-    params: { index: int; value: 0 | 1 }
-12. **wait_digital_input** – Wait for digital input
-    params: { index: int; value: 0 | 1; timeout?: seconds (default 30) }
+10. **set_finger_positions** – Per-finger control (0=open, 100=closed)
+    params: { "speed"?: 15-100 (default 50),
+              "thumb"?: 0-100, "index"?: 0-100, "middle"?: 0-100,
+              "ring"?: 0-100, "little"?: 0-100, "rotate"?: 0-100 }
+
+11. **grip_until_contact** – Close fingers until stall detected
+    params: { "speed"?: 15-100 (default 25),
+              "fingers"?: ["thumb","index","middle","little"] (default all four),
+              "min_contacts"?: 1-4 (default 2),
+              "timeout_s"?: 0.1-30.0 (default 5.0) }
+
+### Executor: "io_robot"
+12. **io_set_digital_output** – Set a digital output pin
+    params: { "pin": 0-7,   // REQUIRED
+              "value": bool  // REQUIRED — true=HIGH, false=LOW }
+
+13. **wait_digital_input** – Wait for a digital input pin value
+    params: { "pin": 0-7,            // REQUIRED
+              "expected_value": bool,  // REQUIRED — true=HIGH, false=LOW
+              "poll_interval_ms"?: 10-1000 (default 100) }
+
+## IMPORTANT NOTES
+- For the UR3 + vacuum gripper setup: the vacuum is typically controlled via
+  `io_set_digital_output` with executor "io_robot" (pin 0, value true=on / false=off).
+- Joint values for `move_joint` are in DEGREES (not radians).
+- Pose values for `move_linear` are in METRES and RADIANS (not mm or degrees).
+- If the user doesn't provide exact coordinates, tell them you need the values
+  rather than making them up. You may use placeholder values like [0,0,0,0,0,0]
+  with a note to the user.
 
 ## VARIABLE INTERPOLATION
-Step params may reference runtime variables with `{{variables.xxx}}`:
-  - `{{variables.bbox.x_center}}`, `{{variables.bbox.y_center}}`
-  - `{{variables.label}}`
-  - `{{variables.palletize.current_index}}`
-Transition conditions can also use `variables.*`, e.g. `variables.label == 'box'`.
+Step params may reference runtime variables with `{{variable_name}}`:
+  - `{{hover_joints}}` — references flow-level variable
+  - `{{vision_data.label}}` — nested access
+Transition conditions can also reference variables, e.g. `{{vision_data.label}} == 'BOX_FOUND'`.
+Flow-level variables are defined in the top-level `"variables"` object.
 
-## EXAMPLE FLOW (pick & place)
+## EXAMPLE FLOW (detect box → pick → place with vacuum)
 ```json
 {
   "id": "simple-pick-and-place",
@@ -487,27 +544,27 @@ Transition conditions can also use `variables.*`, e.g. `variables.label == 'box'
     {
       "name": "detect",
       "steps": [
-        { "id": "s1", "skill": "get_bounding_box", "executor": "camera", "params": { "label": "box" } }
+        { "id": "s1", "skill": "get_bounding_box", "executor": "camera", "params": { "object_class": "box" } }
       ]
     },
     {
       "name": "pick",
       "steps": [
-        { "id": "s2", "skill": "move_joint", "executor": "robot", "params": { "joints": [0, 45, -90, 0, 45, 0], "speed": 50 } },
-        { "id": "s3", "skill": "grip_until_contact", "executor": "hand", "params": { "force_threshold": 60 } }
+        { "id": "s2", "skill": "move_joint", "executor": "robot", "params": { "target_joints_deg": [0, -90, -90, -90, 90, 0], "velocity": 1.5 } },
+        { "id": "s3", "skill": "io_set_digital_output", "executor": "io_robot", "params": { "pin": 0, "value": true } }
       ]
     },
     {
       "name": "place",
       "steps": [
-        { "id": "s4", "skill": "move_linear", "executor": "robot", "params": { "x": 300, "y": -200, "z": 150, "speed": 40 } },
-        { "id": "s5", "skill": "set_grip", "executor": "hand", "params": { "grip_percentage": 0 } }
+        { "id": "s4", "skill": "move_linear", "executor": "robot", "params": { "target_pose": [-0.3, -0.2, 0.15, 0.0, 3.14, 0.0], "velocity": 0.5 } },
+        { "id": "s5", "skill": "io_set_digital_output", "executor": "io_robot", "params": { "pin": 0, "value": false } }
       ]
     }
   ],
   "transitions": [
-    { "from_state": "detect", "to_state": "pick", "type": "immediate", "condition": null },
-    { "from_state": "pick", "to_state": "place", "type": "immediate", "condition": null }
+    { "from_state": "detect", "to_state": "pick", "type": "sequential", "condition": null },
+    { "from_state": "pick", "to_state": "place", "type": "sequential", "condition": null }
   ]
 }
 ```
@@ -523,7 +580,7 @@ async def _generate_flow_with_gemini(
     file_base64: Optional[str] = None,
     file_mime_type: Optional[str] = None,
 ) -> Optional[GenerateResult]:
-    """Call Gemini and return a GenerateResult, or None on failure."""
+    """Call Gemini, persist the generated flow, and return a GenerateResult."""
     if not _GEMINI_AVAILABLE:
         logger.warning("Gemini SDK not available")
         return None
@@ -564,11 +621,23 @@ async def _generate_flow_with_gemini(
         flow_data = data.get("flow")
 
         if flow_data is None:
+            # Conversational reply — no flow to save
             return GenerateResult(message=msg, flow=None)
+
+        # Gemini outputs backend format (states/transitions).
+        # Parse, validate, save to disk, then convert to frontend format.
+        flow_schema = FlowSchema.model_validate(flow_data)
+
+        manager = get_manager()
+        success, error = manager.save_flow(flow_schema)
+        if success:
+            logger.info("Saved generated flow '%s' to disk", flow_schema.id)
+        else:
+            logger.warning("Could not persist generated flow: %s", error)
 
         return GenerateResult(
             message=msg,
-            flow=FlowGenerateResponse(**flow_data),
+            flow=convert_backend_to_frontend(flow_schema),
         )
     except Exception:
         logger.exception("Gemini generation failed")
