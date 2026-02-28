@@ -1,0 +1,25 @@
+{
+  "id": "test_label",
+  "name": "Test Get Label",
+  "initial_state": "read_label",
+  "variables": {},
+  "states": [
+    {
+      "name": "read_label",
+      "steps": [
+        {
+          "id": "get_label_step",
+          "skill": "get_label",
+          "executor": "camera",
+          "params": {
+            "prompt": "Read any text visible in the image. Return the exact text you see.",
+            "use_bbox": false
+          },
+          "store_result": "label_result",
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": []
+}

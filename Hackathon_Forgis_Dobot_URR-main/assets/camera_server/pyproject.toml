@@ -1,0 +1,14 @@
+[project]
+name = "camera-server"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pyrealsense2>=2.50.0",
+    "websockets>=12.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "pillow>=12.1.1",
+]
+
+[project.scripts]
+camera-server = "camera_server:main"

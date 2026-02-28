@@ -1,0 +1,15 @@
+[project]
+name = "backend"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "opencv-python",
+    "numpy",
+    "google-generativeai",
+    "pydantic",
+    "websockets",
+    "ultralytics>=8.0.0",
+    "openai>=1.0.0",
+]

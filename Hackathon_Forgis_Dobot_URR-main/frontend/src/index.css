@@ -1,0 +1,635 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================
+   CUSTOM FONTS - Forgis Brand Fonts
+   ============================================
+   @font-face registers custom font files so the browser
+   can download and use them. Without this, only system
+   fonts (Arial, Times, etc.) are available.
+   ============================================ */
+
+@font-face {
+  font-family: 'Forgis Body';
+  src: url('/01 - Forgis Body Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  /* Shows fallback font while loading, then swaps */
+}
+
+@font-face {
+  font-family: 'Forgis Body';
+  src: url('/02 - Forgis Body Header.otf') format('opentype');
+  font-weight: 700;
+  /* Header variant = bold weight */
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Forgis Digit';
+  src: url('/04 - Forgis Digit Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================
+   FORGIS DESIGN SYSTEM - CSS Variables
+   ============================================ */
+
+:root {
+  /* ── Brand Colors – 3 oranges ── */
+  --orange: #FF5A00;
+  --tiger: #FF9030;
+  --flicker: #FDD358;
+
+  /* ── Core Palette – 8 colors (dark → light) ── */
+  --gunmetal: #122128;
+  --gunmetal-highlight: #FF9030;
+  --gunmetal-50: #889093;
+  --gunmetal-10: #DDDFE0;
+  --steel: #BDC3C7;
+  --cloudy: #E9EEF2;
+  --platinum: #F1F5F7;
+  --white: #FFFFFF;
+
+  /* ── Extended Palette ── */
+  --green: #00dd3b;
+
+  /* ── Semantic – Surfaces ── */
+  --panel: var(--white);
+  --panel-elevated: var(--cloudy);
+
+  /* ── Semantic – Backgrounds ── */
+  --bg-app: var(--white);
+  --bg-panel: var(--white);
+  --bg-panel-hover: var(--platinum);
+  --bg-input: color-mix(in srgb, var(--gunmetal-50) 8%, transparent);
+
+  /* ── Semantic – Text ── */
+  --text-primary: var(--gunmetal);
+  --text-secondary: var(--gunmetal-highlight);
+  --text-muted: var(--gunmetal-50);
+
+  /* ── Borders ── */
+  --border-default: var(--gunmetal-10);
+  --border-subtle: color-mix(in srgb, var(--gunmetal-50) 20%, transparent);
+
+  /* ── Accent / Interactive ── */
+  --accent-hover: var(--orange);
+  --accent: var(--accent-hover);
+  --critical: var(--orange);
+
+  /* ── Status Colors ── */
+  --status-healthy: var(--green);
+  --status-warning: var(--flicker);
+  --status-critical: var(--orange);
+  --status-offline: var(--gunmetal-50);
+
+  /* ── Flow / Node Colors ── */
+  --node-header: var(--cloudy);
+  --node-glow: color-mix(in srgb, var(--orange) 30%, transparent);
+  --handle-bg: var(--gunmetal-10);
+  --handle-border: var(--steel);
+  --selection-highlight: var(--flicker);
+
+  /* ── Sidebar / Chat Colors ── */
+  --sidebar-bg: var(--platinum);
+  --chat-user-bg: var(--white);
+  --chat-user-border: var(--gunmetal-10);
+  --chat-assistant-bg: var(--cloudy);
+
+  /* ── Robot Node Colors (3 concentric circles) ── */
+  --robot-ring-bg: var(--gunmetal-10);
+  --robot-ring-border: var(--gunmetal-50);
+  --robot-middle-bg: var(--gunmetal-highlight);
+  --robot-inner-bg: var(--gunmetal-10);
+
+  /* ── Dot Grid Background ── */
+  --dot-grid-color: var(--platinum);
+
+  /* ── Vertical Colors ── */
+  --vertical-predictive: var(--accent-hover);
+  --vertical-quality: var(--tiger);
+  --vertical-energy: var(--green);
+  --vertical-robot: var(--gunmetal-50);
+  --vertical-optimization: var(--flicker);
+
+  /* ── Chart Palette – 8 distinct colors ── */
+  --chart-1-orange: var(--orange);
+  --chart-2-cyan: var(--green);
+  --chart-3-tiger: var(--tiger);
+  --chart-4-purple: var(--gunmetal-50);
+  --chart-5-flicker: var(--flicker);
+  --chart-6-blue: var(--gunmetal);
+  --chart-7-green: var(--green);
+  --chart-8-pink: var(--steel);
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, black 5%, transparent);
+  --shadow-md: 0 4px 12px color-mix(in srgb, black 8%, transparent);
+  --shadow-lg: 0 8px 24px color-mix(in srgb, black 12%, transparent);
+
+  /* ── Layout ── */
+  --sidebar-width: 240px;
+  --sidebar-collapsed: 56px;
+  --topbar-height: 48px;
+
+  /* ── Typography – Size Scale ── */
+  --fs-9:  9px;
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+
+  /* ── Typography – Semantic Tokens ── */
+  --text-size-micro:   var(--fs-9);   /* timestamps, shot numbers, step indices */
+  --text-size-caption: var(--fs-10);  /* status labels, form labels, counters */
+  --text-size-detail:  var(--fs-11);  /* subtitles, log entries, form inputs */
+  --text-size-label:   var(--fs-12);  /* section headings, buttons, breadcrumbs */
+  --text-size-body:    var(--fs-13);  /* chat messages, chat input */
+  --text-size-reading: var(--fs-14);  /* node labels, placeholders, logo */
+  --text-size-title:   var(--fs-16);  /* panel titles */
+
+  /* ── shadcn/ui variables ── */
+  --radius: 0.5rem;
+  --background: var(--white);
+  --foreground: var(--gunmetal);
+  --card: var(--white);
+  --card-foreground: var(--gunmetal);
+  --popover: var(--white);
+  --popover-foreground: var(--gunmetal);
+  --primary: var(--accent-hover);
+  --primary-foreground: var(--white);
+  --secondary: var(--cloudy);
+  --secondary-foreground: var(--gunmetal-highlight);
+  --muted: var(--cloudy);
+  --muted-foreground: var(--gunmetal-50);
+  --accent-foreground: var(--white);
+  --destructive: var(--orange);
+  --destructive-foreground: var(--white);
+  --border: var(--border-subtle);
+  --input: var(--bg-input);
+  --ring: var(--accent-hover);
+  --chart-1: var(--vertical-predictive);
+  --chart-2: var(--vertical-quality);
+  --chart-3: var(--vertical-energy);
+  --chart-4: var(--vertical-robot);
+  --chart-5: var(--vertical-optimization);
+  --sidebar: var(--sidebar-bg);
+  --sidebar-foreground: var(--gunmetal);
+  --sidebar-primary: var(--accent-hover);
+  --sidebar-primary-foreground: var(--white);
+  --sidebar-accent: var(--cloudy);
+  --sidebar-accent-foreground: var(--gunmetal);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--accent-hover);
+}
+
+
+/* ============================================
+   BASE
+   ============================================ */
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: 'Forgis Body', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Use Forgis Digit for headings, numbers, labels */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Forgis Digit', 'Forgis Body', sans-serif;
+}
+
+/* ============================================
+   FORGIS FONT UTILITY CLASSES
+   Use these classes to apply Forgis fonts consistently
+   ============================================ */
+
+.font-forgis-body {
+  font-family: 'Forgis Body', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.font-forgis-digit {
+  font-family: 'Forgis Digit', 'Forgis Body', sans-serif;
+}
+
+/* ============================================
+   FORGIS TYPOGRAPHY SIZE UTILITIES
+   Maps semantic tokens to utility classes.
+   Uses @layer utilities for correct specificity.
+   ============================================ */
+
+@layer utilities {
+  .forgis-text-micro   { font-size: var(--text-size-micro); }
+  .forgis-text-caption { font-size: var(--text-size-caption); }
+  .forgis-text-detail  { font-size: var(--text-size-detail); }
+  .forgis-text-label   { font-size: var(--text-size-label); }
+  .forgis-text-body    { font-size: var(--text-size-body); }
+  .forgis-text-reading { font-size: var(--text-size-reading); }
+  .forgis-text-title   { font-size: var(--text-size-title); }
+}
+
+/* ============================================
+   SCROLLBARS (browser-specific)
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--steel);
+}
+
+/* ============================================
+   THIRD-PARTY: React Resizable Panels
+   ============================================ */
+
+.panel-resize-handle {
+  background: var(--border-subtle);
+  transition: background 150ms ease;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle[data-resize-handle-active] {
+  background: var(--accent);
+}
+
+.panel-resize-handle-horizontal {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.panel-resize-handle-vertical {
+  height: 4px;
+  cursor: row-resize;
+}
+
+/* ============================================
+   SHADCN/UI THEME
+   ============================================ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ============================================
+   KEYFRAME ANIMATIONS
+   Consolidated from all .module.css files
+   ============================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scaleOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.95); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes pulse-warning {
+  0%, 100% { stroke-width: 2; opacity: 1; }
+  50% { stroke-width: 3; opacity: 0.8; }
+}
+
+@keyframes pulse-critical {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--orange) 40%, transparent); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+@keyframes pulse-root-cause {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--orange) 40%, transparent); }
+  50% { transform: scale(1.02); box-shadow: 0 0 0 10px transparent; }
+}
+
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-hover); }
+  50% { box-shadow: 0 0 0 4px transparent; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes expandFullscreen {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes flowDash {
+  from { stroke-dashoffset: 20; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes pulseConnection {
+  0%, 100% { stroke-width: 2; opacity: 0.8; }
+  50% { stroke-width: 3; opacity: 1; }
+}
+
+@keyframes conveyorSlide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+/* ============================================
+   ANIMATION UTILITY CLASSES
+   ============================================ */
+
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 200ms ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 200ms ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 200ms ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 300ms ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 200ms ease-out forwards;
+}
+
+.animate-scale-out {
+  animation: scaleOut 200ms ease-out forwards;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-bounce {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-pulse-warning {
+  animation: pulse-warning 1.5s ease-in-out infinite;
+}
+
+.animate-pulse-critical {
+  animation: pulse-critical 2s ease-in-out infinite;
+}
+
+.animate-pulse-root-cause {
+  animation: pulse-root-cause 2s ease-in-out infinite;
+}
+
+.animate-pulse-border {
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.animate-expand-fullscreen {
+  animation: expandFullscreen 300ms ease-out forwards;
+}
+
+.animate-flow-dash {
+  animation: flowDash 1s linear infinite;
+}
+
+.animate-pulse-connection {
+  animation: pulseConnection 2s ease-in-out infinite;
+}
+
+/* ============================================
+   GRADIENT UTILITY CLASSES
+   ============================================ */
+
+.gradient-brand {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-hover) 100%);
+}
+
+.gradient-tiger-subtle {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--tiger) 10%, transparent) 0%, transparent 100%);
+}
+
+.gradient-warning-subtle {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--flicker) 8%, transparent) 0%, transparent 100%);
+}
+
+.gradient-critical-subtle {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--orange) 8%, transparent) 0%, transparent 100%);
+}
+
+.gradient-canvas {
+  background: linear-gradient(135deg, var(--platinum) 0%, var(--cloudy) 100%);
+}
+
+/* ============================================
+   DOT GRID BACKGROUND
+   Used for plant graph canvas
+   ============================================ */
+
+.dot-grid-bg {
+  background-color: var(--bg-panel);
+  background-image: radial-gradient(
+    circle,
+    var(--dot-grid-color) 1px,
+    transparent 1px
+  );
+  background-size: 16px 16px;
+}
+
+@media (min-width: 1400px) {
+  .dot-grid-bg {
+    background-image: radial-gradient(
+      circle,
+      var(--dot-grid-color) 1.25px,
+      transparent 1.25px
+    );
+    background-size: 20px 20px;
+  }
+}
+
+@media (min-width: 1800px) {
+  .dot-grid-bg {
+    background-image: radial-gradient(
+      circle,
+      var(--dot-grid-color) 1.5px,
+      transparent 1.5px
+    );
+    background-size: 24px 24px;
+  }
+}
+
+/* ============================================
+   VISUAL EFFECT UTILITIES
+   ============================================ */
+
+.backdrop-blur-panel {
+  backdrop-filter: blur(4px);
+}
+
+.filter-drop-shadow-tiger {
+  filter: drop-shadow(0 0 4px var(--accent-hover));
+}
+
+.filter-drop-shadow-tiger-lg {
+  filter: drop-shadow(0 0 6px var(--accent-hover));
+}
+
+.text-shadow-light {
+  text-shadow: 0 1px 2px color-mix(in srgb, white 80%, transparent);
+}
+
+/* SVG stroke outline effect for labels */
+.svg-stroke-outline {
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 3px;
+}
+
+/* Vertical text for collapsed panels */
+.text-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+/* Text truncation utility */
+.text-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}

@@ -1,0 +1,238 @@
+{
+  "id": "pick_and_place_v2",
+  "name": "Pick and Place with Approach/Retract",
+  "initial_state": "start_midair",
+  "loop": true,
+  "variables": {
+    "midair_joints": [-122.69, -109.26, -44.24, -112.69, 89.94, -14.72],
+    "pick_pose": [-0.413, -0.080, 0.094, 0.0, 3.14, 0.0],
+    "approach_z_offset": 0.15,
+    "waypoint_c_joints": [-26.66, -76.09, -89.12, -99.54, 88.68, 154.01],
+    "place_positions": {
+      "Zone_A": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0], [0.065, -0.318, 0.174, 0.0, 3.14, 0.0], [-0.015, -0.426, 0.174, 2.20, 2.26, 0.0]],
+      "Zone_B": [[0.248, -0.288, 0.174, 2.20, 2.26, 0.0], [0.248, -0.353, 0.174, 2.20, 2.26, 0.0], [0.352, -0.310, 0.174, 0.0, 3.14, 0.0]],
+      "Zone_C": [[0.386, -0.082, 0.174, 0.0, 3.14, 0.0], [0.270, -0.093, 0.174, 2.20, 2.26, 0.0], [0.270, -0.008, 0.174, 2.20, 2.26, 0.0]],
+      "default":   [[-0.00324, -0.3789, 0.217, 3.14, 0.0, 0.0]]
+    }
+  },
+  "states": [
+    {
+      "name": "start_midair",
+      "steps": [
+        {
+          "id": "go_midair_1",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{midair_joints}}"
+          },
+          "error_handling": {
+            "strategy": "retry",
+            "max_retries": 2
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    
+    {
+      "name": "pick",
+      "steps": [
+        {
+          "id": "read_label",
+          "skill": "get_label",
+          "executor": "camera",
+          "params": {
+            "prompt": "Read the product label in the image. Map it to one of these zones: Zone_A = MXP-30, Zone_B = MXP Speed, Zone_C = MXP Torque. Return ONLY the zone name (Zone_A, Zone_B, or Zone_C), nothing else. If you are unsure, return the most likely zone.",
+            "use_bbox": false
+          },
+          "store_result": "label_data",
+          "timeout_ms": 60000
+        },
+        {
+          "id": "pick_approach",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "pick_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_on",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": true
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "transition",
+      "steps": [
+        {
+          "id": "pick_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "go_midair_2",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{midair_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "waypoint_c",
+      "steps": [
+        {
+          "id": "go_waypoint_c",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{waypoint_c_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "place",
+      "steps": [
+        {
+          "id": "place_approach",
+          "skill": "palletize",
+          "executor": "robot",
+          "params": {
+            "positions_var": "place_positions",
+            "key": "{{label_data.label}}",
+            "default_key": "default",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "store_result": "place_target",
+          "timeout_ms": 30000
+        },
+        {
+          "id": "place_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_off",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": false
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "end_midair",
+      "steps": [
+        {
+          "id": "place_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "go_midair_3",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{midair_joints}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "restart_conveyor",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 4,
+            "value": true
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "reset_io_conveyour",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 4,
+            "value": false
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "conditional",
+      "from_state": "start_midair",
+      "to_state": "pick",
+      "condition": "io_robot.input[4] == true"
+    },
+    {
+      "type": "sequential",
+      "from_state": "pick",
+      "to_state": "transition"
+    },
+    {
+      "type": "conditional",
+      "from_state": "transition",
+      "to_state": "waypoint_c",
+      "condition": "{{label_data.label}} == 'Zone_C'"
+    },
+    {
+      "type": "conditional",
+      "from_state": "transition",
+      "to_state": "place",
+      "condition": "{{label_data.label}} != 'Zone_C'"
+    },
+    {
+      "type": "sequential",
+      "from_state": "waypoint_c",
+      "to_state": "place"
+    },
+    {
+      "type": "sequential",
+      "from_state": "place",
+      "to_state": "end_midair"
+    }
+  ]
+}

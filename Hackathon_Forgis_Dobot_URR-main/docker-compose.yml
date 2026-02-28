@@ -1,0 +1,68 @@
+services:
+  # ── UR Robot Driver ──────────────────────────────────────────
+  # Enable with: docker compose --profile ur up
+  # Or set COMPOSE_PROFILES=ur in .env
+  ur-driver:
+    profiles: [ur]
+    build: ./assets/urdriver
+    container_name: ur-driver
+    network_mode: host
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    env_file: .env
+    command: bash scripts/start_driver.sh
+    restart: unless-stopped
+
+
+  # ── DOBOT Nova 5 Driver ──────────────────────────────────────
+  # Enable with: docker compose --profile dobot up
+  # Or set COMPOSE_PROFILES=dobot in .env
+  dobot-driver:
+    profiles: [dobot]
+    build: ./assets/dobot-driver
+    container_name: dobot-driver
+    network_mode: host
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    env_file: .env
+    command: bash scripts/start_driver.sh
+    restart: unless-stopped
+
+
+  # ── Backend Application ──────────────────────────────────────
+  # Runs RobotNode + PickAndPlacePipeline + FastAPI flow execution API.
+  # API available at http://localhost:8000
+  backend:
+    build: ./backend
+    container_name: forgis-backend
+    network_mode: host
+    ipc: host
+    ports:
+      - "8000:8000"  # FastAPI (Note: ignored when network_mode: host on Linux)
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FLOWS_DIR=/app/flows
+      - YOLO_MODEL=${YOLO_MODEL:-/app/weights/roboflow_logistics.pt}
+      - ROBOT_TCP_OFFSET=${ROBOT_TCP_OFFSET:-0,0,0.055,0,0,0}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+    env_file: .env
+    volumes:
+      - ./backend/src/data/flow:/app/flows  # Persist flow definitions
+      - ./backend/weights:/app/weights  # YOLO model weights
+    restart: unless-stopped
+
+  # ── Frontend ─────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: forgis-frontend
+    network_mode: host
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

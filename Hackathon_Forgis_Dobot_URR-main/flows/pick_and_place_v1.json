@@ -1,0 +1,172 @@
+{
+  "id": "pick_and_place_v1",
+  "name": "Basic Pick and Place",
+  "initial_state": "start_midair",
+  "variables": {
+    "place_positions": {
+      "product_A": [-58.50, -103.66, -75.31, -90.16, 89.94, 118.72],
+      "product_B": [-45.00, -110.00, -70.00, -85.00, 89.94, 118.72],
+      "product_C": [-70.00, -100.00, -65.00, -95.00, 89.94, 118.72],
+      "default": [-58.50, -103.66, -75.31, -90.16, 89.94, 118.72]
+    }
+  },
+  "states": [
+    {
+      "name": "start_midair",
+      "steps": [
+        {
+          "id": "go_midair_1",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [-122.69, -109.26, -44.24, -112.69, 89.94, 118.72]
+          },
+          "error_handling": {
+            "strategy": "retry",
+            "max_retries": 2
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "labelling_analysis",
+      "steps": [
+        {
+          "id": "wait_machine_ready",
+          "skill": "wait_digital_input",
+          "executor": "io_machine",
+          "params": {
+            "pin": 0,
+            "expected_value": true
+          },
+          "timeout_ms": 60000
+        },
+        {
+          "id": "read_label",
+          "skill": "get_label",
+          "executor": "camera",
+          "params": {
+            "prompt": "Read the product label. Return only the product code (e.g., product_A, product_B, product_C).",
+            "use_bbox": false
+          },
+          "store_result": "label_data",
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "pick",
+      "steps": [
+        {
+          "id": "wait_di4",
+          "skill": "wait_digital_input",
+          "executor": "io_robot",
+          "params": {
+            "pin": 4,
+            "expected_value": true
+          },
+          "timeout_ms": 60000
+        },
+        {
+          "id": "move_to_pick",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [-141.27, -129.96, -80.55, -59.00, 88.25, 118.72]
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_on",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": true
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "return_midair",
+      "steps": [
+        {
+          "id": "go_midair_2",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [-122.69, -109.26, -44.24, -112.69, 89.94, 118.72]
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "place",
+      "steps": [
+        {
+          "id": "move_to_place",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{lookup:place_positions:label_data.label:default}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_off",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": false
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "end_midair",
+      "steps": [
+        {
+          "id": "go_midair_3",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [-122.69, -109.26, -44.24, -112.69, 89.94, 118.72]
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "sequential",
+      "from_state": "start_midair",
+      "to_state": "labelling_analysis"
+    },
+    {
+      "type": "sequential",
+      "from_state": "labelling_analysis",
+      "to_state": "pick"
+    },
+    {
+      "type": "sequential",
+      "from_state": "pick",
+      "to_state": "return_midair"
+    },
+    {
+      "type": "sequential",
+      "from_state": "return_midair",
+      "to_state": "place"
+    },
+    {
+      "type": "sequential",
+      "from_state": "place",
+      "to_state": "end_midair"
+    }
+  ]
+}
