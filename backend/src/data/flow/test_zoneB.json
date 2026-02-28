@@ -1,0 +1,147 @@
+{
+  "id": "simple_pick_and_place_zone_b",
+  "name": "Simple Pick and Place - Zone B (No Camera)",
+  "initial_state": "start_midair",
+  "loop": false,
+  "variables": {
+    "midair_joints": [-122.69, -109.26, -44.24, -112.69, 89.94, -14.72],
+    "pick_pose": [-0.413, -0.080, 0.094, 0.0, 3.14, 0.0],
+    "place_pose": [0.248, -0.288, 0.174, 2.20, 2.26, 0.0],
+    "approach_z_offset": 0.15
+  },
+  "states": [
+    {
+      "name": "start_midair",
+      "steps": [
+        {
+          "id": "go_midair_1",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{midair_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "pick",
+      "steps": [
+        {
+          "id": "pick_approach",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "pick_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_on",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": true
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "pick_retract",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "place",
+      "steps": [
+        {
+          "id": "place_approach",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "place_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_off",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": false
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "place_retract",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "end_midair",
+      "steps": [
+        {
+          "id": "go_midair_end",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{midair_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "sequential",
+      "from_state": "start_midair",
+      "to_state": "pick"
+    },
+    {
+      "type": "sequential",
+      "from_state": "pick",
+      "to_state": "place"
+    },
+    {
+      "type": "sequential",
+      "from_state": "place",
+      "to_state": "end_midair"
+    }
+  ]
+}
