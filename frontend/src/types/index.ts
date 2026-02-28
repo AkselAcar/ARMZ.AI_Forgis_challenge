@@ -31,6 +31,12 @@ export interface Flow {
   loop?: boolean;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  message?: string;
+}
+
+export interface GenerateResult {
+  message: string;
+  flow: Flow | null;
 }
 
 // ── Chat types ──────────────────────────────────────────────
@@ -40,6 +46,9 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  fileBase64?: string;
+  fileMimeType?: string;
+  fileName?: string;
 }
 
 // ── Device types ────────────────────────────────────────────

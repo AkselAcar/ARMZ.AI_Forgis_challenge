@@ -8,39 +8,53 @@ export function useFlowGeneration() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const sendMessage = useCallback(async (content: string) => {
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-
-    try {
-      const result = await generateFlow(content);
-      setFlow(layoutFlow(result));
-
-      const assistantMsg: ChatMessage = {
+  const sendMessage = useCallback(
+    async (
+      content: string,
+      fileBase64?: string,
+      fileMimeType?: string,
+      fileName?: string,
+    ) => {
+      const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
-        role: "assistant",
-        content: `Flow generated with ${result.nodes.length} nodes and ${result.edges.length} edges.`,
+        role: "user",
+        content,
         timestamp: Date.now(),
+        ...(fileBase64 && { fileBase64 }),
+        ...(fileMimeType && { fileMimeType }),
+        ...(fileName && { fileName }),
       };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err) {
-      const errorMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      setMessages((prev) => [...prev, userMsg]);
+      setLoading(true);
+
+      try {
+        const result = await generateFlow(content, fileBase64, fileMimeType);
+
+        if (result.flow) {
+          setFlow(layoutFlow(result.flow));
+        }
+
+        const assistantMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: result.message,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+      } catch (err) {
+        const errorMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   const updateStepParams = useCallback(
     (nodeId: string, stepId: string, params: Record<string, unknown>) => {
