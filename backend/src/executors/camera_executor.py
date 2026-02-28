@@ -1,4 +1,4 @@
-"""Camera executor for YOLO detection, OpenAI Vision, and frame streaming."""
+"""Camera executor for YOLO detection, Gemini Vision, and frame streaming."""
 
 import asyncio
 import base64
@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Optional
 
 import cv2
 import numpy as np
-from openai import AsyncAzureOpenAI
+import google.generativeai as genai
+from PIL import Image
 
 from .base import Executor
 
@@ -44,7 +45,7 @@ class BoundingBox:
 
 class CameraExecutor(Executor):
     """
-    Executor for camera operations including YOLO detection and OpenAI Vision.
+    Executor for camera operations including YOLO detection and Gemini Vision.
 
     Provides streaming, object detection, and OCR capabilities.
     """
@@ -65,9 +66,10 @@ class CameraExecutor(Executor):
         self._yolo_model = None
         self._yolo_model_name = os.environ.get("YOLO_MODEL", "/app/weights/roboflow_logistics.pt")
 
-        # Azure OpenAI client (lazy loaded)
-        self._openai_client: Optional[AsyncAzureOpenAI] = None
-        self._azure_deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+        # Gemini model (lazy loaded)
+        self._gemini_model = None
+        self._gemini_model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self._gemini_configured = False
 
         # Last detection result for cropping
         self._last_bbox: Optional[BoundingBox] = None
@@ -80,9 +82,8 @@ class CameraExecutor(Executor):
         # loop = asyncio.get_event_loop()
         # await loop.run_in_executor(None, self._get_yolo_model)
 
-        # Pre-initialize Azure OpenAI client AND warm up the HTTP connection
-        # so the first real read_label() call doesn't pay the TLS/auth cold-start
-        await self._warmup_openai()
+        # Pre-initialize Gemini and warm up the connection
+        await self._warmup_gemini()
 
         timeout = 10.0
         elapsed = 0.0
@@ -114,34 +115,45 @@ class CameraExecutor(Executor):
             logger.info("YOLO model loaded")
         return self._yolo_model
 
-    def _get_openai_client(self) -> AsyncAzureOpenAI:
-        """Get or create Azure OpenAI client."""
-        if self._openai_client is None:
-            self._openai_client = AsyncAzureOpenAI(
-                api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
-                api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
-                azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT"),
-            )
-        return self._openai_client
+    def _get_gemini_model(self):
+        """Get or create Gemini model."""
+        if not self._gemini_configured:
+            api_key = os.environ.get("GEMINI_API_KEY")
+            logger.info(f"GEMINI_API_KEY: {api_key}")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set")
+            genai.configure(api_key=api_key)
+            self._gemini_configured = True
+        
+        if self._gemini_model is None:
+            self._gemini_model = genai.GenerativeModel(self._gemini_model_name)
+            logger.info(f"Gemini model initialized: {self._gemini_model_name}")
+        return self._gemini_model
 
-    async def _warmup_openai(self) -> None:
-        """Send a minimal request to establish the HTTP/TLS connection pool.
+    async def _call_gemini(self, content, timeout: float = 30.0):
+        """Call Gemini model with the given content.
 
-        This eliminates the cold-start latency on the first real read_label() call.
+        Args:
+            content: Content to send (str, list of str/image, etc.).
+            timeout: Timeout in seconds.
+
+        Returns:
+            The Gemini response object.
         """
+        model = self._get_gemini_model()
+        loop = asyncio.get_event_loop()
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: model.generate_content(content)),
+            timeout=timeout,
+        )
+
+    async def _warmup_gemini(self) -> None:
+        """Send a minimal request to establish the connection."""
         try:
-            client = self._get_openai_client()
-            await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=self._azure_deployment,
-                    messages=[{"role": "user", "content": "hi"}],
-                    max_completion_tokens=1,
-                ),
-                timeout=15.0,
-            )
-            logger.info("Azure OpenAI connection warmed up successfully")
+            await self._call_gemini("hi", timeout=15.0)
+            logger.info("Gemini connection warmed up successfully")
         except Exception as e:
-            logger.warning(f"Azure OpenAI warmup failed (non-fatal): {e}")
+            logger.warning(f"Gemini warmup failed (non-fatal): {e}")
 
     # --- Streaming ---
 
@@ -383,46 +395,22 @@ class CameraExecutor(Executor):
         cv2.imwrite("/app/debug_label_crop.jpg", frame)
         logger.info(f"read_label: saved debug crop to /app/debug_label_crop.jpg (shape={frame.shape})")
 
-        # Encode frame to JPEG
-        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 90]
-        success, encoded = cv2.imencode(".jpg", frame, encode_params)
-        if not success:
-            return {"success": False, "label": "", "error": "Failed to encode image"}
-
-        image_bytes = encoded.tobytes()
-        b64_image = base64.b64encode(image_bytes).decode()
+        # Convert BGR (OpenCV) to RGB for PIL
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(frame_rgb)
 
         try:
-            client = self._get_openai_client()
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=self._azure_deployment,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
-                                },
-                            ],
-                        }
-                    ],
-                    max_completion_tokens=300,
-                ),
-                timeout=50.0,  # generous timeout to handle cold-start connection
-            )
+            response = await self._call_gemini([prompt, pil_image], timeout=30.0)
 
-            label = response.choices[0].message.content or ""
-            logger.info(f"OpenAI Vision response: {label[:100]}...")
+            label = response.text or ""
+            logger.info(f"Gemini Vision response: {label[:100]}...")
             return {"success": True, "label": label.strip()}
 
         except asyncio.TimeoutError:
-            logger.error("OpenAI Vision timeout after 25 seconds")
-            return {"success": False, "label": "", "error": "OpenAI Vision timeout"}
+            logger.error("Gemini Vision timeout")
+            return {"success": False, "label": "", "error": "Gemini Vision timeout"}
         except Exception as e:
-            logger.error(f"OpenAI Vision error: {e}")
+            logger.error(f"Gemini Vision error: {e}")
             return {"success": False, "label": "", "error": str(e)}
 
     async def check_quality(
@@ -456,40 +444,16 @@ class CameraExecutor(Executor):
         cv2.imwrite("/app/debug_qc_crop.jpg", frame)
         logger.info(f"check_quality: saved debug crop to /app/debug_qc_crop.jpg (shape={frame.shape})")
 
-        # Encode frame to JPEG
-        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 90]
-        success, encoded = cv2.imencode(".jpg", frame, encode_params)
-        if not success:
-            return {"success": False, "readable": False, "error": "Failed to encode image"}
-
-        image_bytes = encoded.tobytes()
-        b64_image = base64.b64encode(image_bytes).decode()
+        # Convert BGR (OpenCV) to RGB for PIL
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(frame_rgb)
 
         try:
-            client = self._get_openai_client()
-            response = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=self._azure_deployment,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
-                                },
-                            ],
-                        }
-                    ],
-                    max_completion_tokens=50,
-                ),
-                timeout=50.0,
-            )
+            response = await self._call_gemini([prompt, pil_image], timeout=30.0)
 
-            raw_response = response.choices[0].message.content or ""
+            raw_response = response.text or ""
             raw_response = raw_response.strip().upper()
-            logger.info(f"check_quality OpenAI response: {raw_response}")
+            logger.info(f"check_quality Gemini response: {raw_response}")
 
             # Parse response - look for READABLE or NOT_READABLE
             readable = "READABLE" in raw_response and "NOT_READABLE" not in raw_response
@@ -501,10 +465,10 @@ class CameraExecutor(Executor):
             }
 
         except asyncio.TimeoutError:
-            logger.error("check_quality: OpenAI Vision timeout")
-            return {"success": False, "readable": False, "error": "OpenAI Vision timeout"}
+            logger.error("check_quality: Gemini Vision timeout")
+            return {"success": False, "readable": False, "error": "Gemini Vision timeout"}
         except Exception as e:
-            logger.error(f"check_quality: OpenAI Vision error: {e}")
+            logger.error(f"check_quality: Gemini Vision error: {e}")
             return {"success": False, "readable": False, "error": str(e)}
 
     def _crop_to_pick_zone(self, frame: np.ndarray) -> tuple[np.ndarray, int, int]:

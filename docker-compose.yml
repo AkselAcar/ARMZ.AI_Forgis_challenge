@@ -38,6 +38,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     env_file: .env
     volumes:
+      - ./backend/src:/app/src  # Mount source for live editing
       - ./backend/src/data/flow:/app/flows  # Persist flow definitions
       - ./backend/weights:/app/weights  # YOLO model weights
     restart: unless-stopped
