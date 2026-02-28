@@ -1,8 +1,16 @@
 import { postJson } from "./httpClient";
-import type { Flow } from "@/types";
+import type { GenerateResult } from "@/types";
 
-export async function generateFlow(prompt: string): Promise<Flow> {
-  return postJson<Flow>("/flows/generate", { prompt });
+export async function generateFlow(
+  prompt: string,
+  fileBase64?: string,
+  fileMimeType?: string,
+): Promise<GenerateResult> {
+  return postJson<GenerateResult>("/flows/generate", {
+    prompt,
+    file_base64: fileBase64 ?? null,
+    file_mime_type: fileMimeType ?? null,
+  });
 }
 
 export async function startFlow(flowId: string): Promise<void> {

@@ -8,24 +8,36 @@ export function useFlowGeneration() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (
+    content: string,
+    fileBase64?: string,
+    fileMimeType?: string,
+    fileName?: string,
+  ) => {
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content,
       timestamp: Date.now(),
+      fileBase64,
+      fileMimeType,
+      fileName,
     };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
     try {
-      const result = await generateFlow(content);
-      setFlow(layoutFlow(result));
+      const result = await generateFlow(content, fileBase64, fileMimeType);
+
+      // Only update the canvas if Gemini actually generated a flow
+      if (result.flow) {
+        setFlow(layoutFlow(result.flow));
+      }
 
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: `Flow generated with ${result.nodes.length} nodes and ${result.edges.length} edges.`,
+        content: result.message,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMsg]);

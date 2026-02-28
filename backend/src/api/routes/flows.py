@@ -1,6 +1,9 @@
 """REST endpoints for flow management."""
 
+import base64
+import json
 import logging
+import os
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -9,6 +12,13 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from flow import FlowSchema, FlowStatusResponse
+
+try:
+    import google.generativeai as genai
+    _GEMINI_AVAILABLE = True
+except ImportError:
+    _GEMINI_AVAILABLE = False
+    logger.warning("google-generativeai not installed — Gemini Vision unavailable")
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
@@ -67,6 +77,8 @@ class FlowGenerateRequest(BaseModel):
     """Request for generating a flow from prompt."""
 
     prompt: str
+    file_base64: Optional[str] = None      # base64-encoded file (image or PDF)
+    file_mime_type: Optional[str] = None   # e.g. "image/jpeg", "application/pdf"
 
 
 class FlowStep(BaseModel):
@@ -100,13 +112,20 @@ class FlowEdge(BaseModel):
 
 
 class FlowGenerateResponse(BaseModel):
-    """Response with frontend-compatible flow format."""
+    """Frontend-compatible flow format (nodes + edges)."""
 
     id: str
     name: str
     loop: bool = False
     nodes: list[FlowNode]
     edges: list[FlowEdge]
+
+
+class GenerateResult(BaseModel):
+    """Wrapper returned by /flows/generate."""
+
+    message: str
+    flow: Optional[FlowGenerateResponse] = None  # None for conversational replies
 
 
 def convert_backend_to_frontend(flow: FlowSchema) -> FlowGenerateResponse:
@@ -358,28 +377,136 @@ async def resume_flow():
     return FlowResumeResponse(success=True, message=message)
 
 
-# Default flow loaded when no AI generation is implemented.
-# Hackathon challenge: replace this endpoint with real LLM-based flow generation.
+# Default flow loaded when no AI generation is available.
 _DEFAULT_FLOW_ID = "dobot_test_pick"
 
+# ── Gemini Vision integration ─────────────────────────────────────────────────
 
-@router.post("/generate", response_model=FlowGenerateResponse)
+_GEMINI_FLOW_SCHEMA = """{
+  "message": "A helpful natural language response to the user.",
+  "flow": {
+    "id": "string (snake_case, no spaces)",
+    "name": "string (human readable title)",
+    "loop": false,
+    "nodes": [
+      {"id": "start", "type": "start", "label": "Start", "position": {"x": 0, "y": 0}},
+      {
+        "id": "state_id (snake_case)",
+        "type": "state",
+        "label": "Human Label",
+        "steps": [
+          {"id": "step_id", "skill": "skill_name", "executor": "executor_name", "params": {}}
+        ],
+        "position": {"x": 0, "y": 0}
+      },
+      {"id": "end", "type": "end", "label": "End", "position": {"x": 0, "y": 0}}
+    ],
+    "edges": [
+      {"id": "e-start-first_state", "source": "start", "target": "first_state_id"},
+      {"id": "e-last_state-end", "source": "last_state_id", "target": "end"}
+    ]
+  }
+}"""
+
+_GEMINI_SYSTEM_PROMPT = f"""You are an expert robotics automation engineer assistant.
+You help users design and understand robot execution flows.
+
+Return ONLY a raw valid JSON object (no markdown) with this structure:
+{_GEMINI_FLOW_SCHEMA}
+
+Rules for the "flow" field:
+- Set "flow" to null for conversational messages (greetings, questions, clarifications).
+- Set "flow" to a full flow object when the user asks you to generate, create, or build a flow.
+- If the user provides an image or PDF, analyse it and use it to inform the flow.
+- A flow always starts with a 'start' node and ends with an 'end' node.
+- Each state node must have at least one step.
+- Edge ids must be unique.
+- Position values must always be {{"x": 0, "y": 0}} — the frontend handles layout.
+
+Available executors and their skills:
+- executor "robot":      move_joint, move_linear
+- executor "camera":     get_label, get_bounding_box, start_streaming, stop_streaming
+- executor "hand":       grip_until_contact
+- executor "io_robot":   wait_digital_input, set_digital_output
+- executor "io_machine": wait_digital_input, set_digital_output
+"""
+
+
+async def _generate_flow_with_gemini(
+    prompt: str,
+    file_base64: Optional[str],
+    file_mime_type: Optional[str],
+) -> Optional[GenerateResult]:
+    """Call Gemini to generate a flow or answer conversationally. Returns None on failure."""
+    if not _GEMINI_AVAILABLE:
+        logger.warning("Gemini not available — falling back to default flow")
+        return None
+
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        logger.warning("GEMINI_API_KEY not set — falling back to default flow")
+        return None
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            system_instruction=_GEMINI_SYSTEM_PROMPT,
+        )
+
+        parts: list = [prompt]
+
+        if file_base64 and file_mime_type:
+            file_bytes = base64.b64decode(file_base64)
+            parts.append({"mime_type": file_mime_type, "data": file_bytes})
+
+        response = await model.generate_content_async(
+            parts,
+            generation_config={"response_mime_type": "application/json"},
+        )
+
+        raw = response.text.strip()
+        logger.debug("Gemini raw response: %s", raw[:500])
+
+        data = json.loads(raw)
+        flow_data = data.get("flow")
+        return GenerateResult(
+            message=data.get("message", "Done."),
+            flow=FlowGenerateResponse(**flow_data) if flow_data else None,
+        )
+
+    except Exception as exc:
+        logger.error("Gemini call failed: %s", exc, exc_info=True)
+        return None
+
+
+@router.post("/generate", response_model=GenerateResult)
 async def generate_flow(request: FlowGenerateRequest):
     """
-    Load and return the default flow definition.
-
-    TODO (hackathon): Implement AI-based flow generation from the natural
-    language prompt in `request.prompt`. The response must conform to
-    FlowGenerateResponse (nodes + edges in frontend format).
+    Generate a robot execution flow from a natural language prompt.
+    Returns a { message, flow } envelope — flow is null for conversational replies.
     """
-    logger.debug("generate_flow called with prompt: %r", request.prompt)
-    manager = get_manager()
+    logger.debug(
+        "generate_flow called with prompt: %r, has_file: %s",
+        request.prompt,
+        bool(request.file_base64),
+    )
 
+    if request.file_base64 or os.environ.get("GEMINI_API_KEY"):
+        result = await _generate_flow_with_gemini(request.prompt, request.file_base64, request.file_mime_type)
+        if result is not None:
+            return result
+        logger.info("Gemini generation failed — falling back to default flow")
+
+    # Fallback: load default flow from disk
+    manager = get_manager()
     flow = manager.get_flow(_DEFAULT_FLOW_ID)
     if flow is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Default flow '{_DEFAULT_FLOW_ID}' not found",
         )
-
-    return convert_backend_to_frontend(flow)
+    return GenerateResult(
+        message="Here is the default flow.",
+        flow=convert_backend_to_frontend(flow),
+    )

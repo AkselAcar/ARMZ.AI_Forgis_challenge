@@ -31,6 +31,13 @@ export interface Flow {
   loop?: boolean;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  message?: string; // natural language explanation from Gemini
+}
+
+// Wrapper returned by /flows/generate — flow is null for conversational replies
+export interface GenerateResult {
+  message: string;
+  flow: Flow | null;
 }
 
 // ── Chat types ──────────────────────────────────────────────
@@ -40,6 +47,9 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  fileBase64?: string;    // base64 of attached file (image or PDF)
+  fileMimeType?: string; // e.g. "image/jpeg", "application/pdf"
+  fileName?: string;     // original filename (for display)
 }
 
 // ── Device types ────────────────────────────────────────────
