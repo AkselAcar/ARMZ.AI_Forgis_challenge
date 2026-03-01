@@ -541,8 +541,8 @@ class CameraExecutor(Executor):
 
         # 1. Define the Trigger Zone (ROI)
         # Using the coordinates we found earlier (adjust if needed)
-        x1, y1 = 230, 240  # Top-left corner
-        x2, y2 = 350, 350  # Bottom-right corner
+        x1, y1 = 230, 220  # Top-left corner
+        x2, y2 = 330, 300  # Bottom-right corner
         
         # Crop the frame to just this box
         roi = frame[y1:y2, x1:x2]
@@ -560,7 +560,7 @@ class CameraExecutor(Executor):
 
         # 5. Trigger Logic
         # If more than 500 pixels are white, the label has entered the zone!
-        if white_pixels > 100:
+        if white_pixels > 500:
             
             # Prepare the ROS message
             detection_data = {
