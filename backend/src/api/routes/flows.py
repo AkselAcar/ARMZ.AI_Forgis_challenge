@@ -444,7 +444,6 @@ Always reply with a JSON object:
 
 2. **move_linear** – Cartesian straight-line move
    params: { "target_pose": [x, y, z, rx, ry, rz],  // REQUIRED, 6 floats — metres & radians
-              "z_offset"?: float (default 0.0, metres, positive=up),
               "velocity"?: 0.01-1.0 (default 0.8, m/s),
               "acceleration"?: 0.01-3.0 (default 1.2, m/s²) }
 
@@ -452,7 +451,6 @@ Always reply with a JSON object:
    params: { "positions_var": string,   // REQUIRED — name of flow variable holding positions map
               "key": string,             // REQUIRED — zone key e.g. "Zone_A"
               "default_key"?: string (default "default"),
-              "z_offset"?: float (default 0.0, metres),
               "velocity"?: 0.01-1.0 (default 0.8),
               "acceleration"?: 0.01-3.0 (default 1.2) }
 
@@ -460,16 +458,28 @@ Always reply with a JSON object:
    params: { "index": int (≥1),   // REQUIRED — 1=close gripper, 2=open on dual-solenoid
               "status"?: 0|1 (default 1) }
 
-5. **pick_and_place** – Complete pick-and-place cycle (compound skill)
-   params: { "pick_pose": [x,y,z,rx,ry,rz],    // REQUIRED, metres & radians
-              "place_pose": [x,y,z,rx,ry,rz],   // REQUIRED, metres & radians
-              "approach_z_offset"?: float (default 0.15, metres above pick/place),
+5. **pick_and_place** – Complete pick-and-place cycle with Gemini vision zone routing (compound skill)
+   params: { "pick_pose": [x,y,z,rx,ry,rz],       // REQUIRED, metres & radians
+              "positions_var"?: string (default "place_positions"),
+                // Name of the flow variable holding a zone→poses dict, e.g.:
+                // { "Zone_A": [[x,y,z,rx,ry,rz], ...], "Zone_B": [...], "default": [...] }
+              "default_zone"?: string (default "default"),
+                // Zone key used when Gemini label is unrecognised
+              "waypoint_c_joints"?: [j0,j1,j2,j3,j4,j5] or null (default null),
+                // Optional joint-space detour taken only for waypoint_c_zone
+              "waypoint_c_zone"?: string (default "Zone_C"),
+              "label_prompt"?: string (default: MXP-30/Speed/Torque zone prompt),
               "vacuum_pin"?: 0-7 (default 0),
               "vacuum_settle_s"?: 0-2 (default 0.3),
-              "pick_velocity"?: 0.01-1.0 (default 0.5, m/s),
-              "place_velocity"?: 0.01-1.0 (default 0.5, m/s),
-              "acceleration"?: 0.01-3.0 (default 1.2, m/s²) }
-   NOTE: This uses both "robot" AND "io_robot" executors internally.
+              "pick_velocity"?: 0.01-2.0 (default 1.0, m/s),
+              "place_velocity"?: 0.01-2.0 (default 1.0, m/s),
+              "acceleration"?: 0.01-5.0 (default 2.0, m/s²) }
+   NOTE: place_pose is NO LONGER a parameter. Placement position is chosen
+   automatically by reading the product label with Gemini and looking it up
+   in the positions_var dict. Zone positions wrap around (round-robin).
+   The flow MUST have a flow-level variable named "place_positions" (or whatever
+   positions_var is set to) with the zone dict.
+   This skill uses "robot", "io_robot" AND "camera" executors internally.
    Set executor to "robot" in the step.
 
 ### Executor: "camera"
@@ -568,6 +578,37 @@ Flow-level variables are defined in the top-level `"variables"` object.
   ]
 }
 ```
+
+## ROBOT CONFIGURATION (use these values — do NOT ask the user for them)
+
+These are the pre-calibrated values for this specific robot cell.
+Always use them when building pick-and-place flows unless the user explicitly
+provides different ones.
+
+### Standard pick pose (conveyor pick position) 
+"pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0]
+
+### Standard midair/home joint position (safe transit pose)
+"midair_joints": [-172.0, -134.0, -77.0, -58.0, 89.0, -14.72]
+
+### Standard waypoint for Zone_C (joint detour to avoid collision)
+"waypoint_c_joints": [-26.66, -76.09, -89.12, -99.54, 88.68, 154.01]
+
+### Standard place_positions (zone → list of poses)
+Always include this exact dict as the "place_positions" flow variable.
+Never ask the user to provide placement coordinates — use these:
+```json
+{
+  "Zone_A": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0], [0.065, -0.318, 0.174, 0.0, 3.14, 0.0], [-0.015, -0.426, 0.174, 2.20, 2.26, 0.0]],
+  "Zone_B": [[0.248, -0.288, 0.174, 2.20, 2.26, 0.0], [0.248, -0.353, 0.174, 2.20, 2.26, 0.0], [0.352, -0.310, 0.174, 0.0, 3.14, 0.0]],
+  "Zone_C": [[0.386, -0.082, 0.174, 0.0, 3.14, 0.0], [0.270, -0.093, 0.174, 2.20, 2.26, 0.0], [0.270, -0.008, 0.174, 2.20, 2.26, 0.0]],
+  "default": [[-0.00324, -0.3789, 0.217, 3.14, 0.0, 0.0]]
+}
+```
+Zone mapping: Zone_A = MXP-30, Zone_B = MXP Speed, Zone_C = MXP Torque.
+
+### Standard label prompt (for get_label / pick_and_place)
+"Read the product label in the image. Map it to one of these zones: Zone_A = MXP-30, Zone_B = MXP Speed, Zone_C = MXP Torque. Return ONLY the zone name (Zone_A, Zone_B, or Zone_C), nothing else. If you are unsure, return the most likely zone."
 
 IMPORTANT: reply ONLY with the JSON envelope. No markdown fences, no extra text.
 """

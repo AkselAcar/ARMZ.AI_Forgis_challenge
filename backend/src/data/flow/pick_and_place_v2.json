@@ -4,9 +4,8 @@
   "initial_state": "start_midair",
   "loop": true,
   "variables": {
-    "midair_joints": [-122.69, -109.26, -44.24, -112.69, 89.94, -14.72],
-    "pick_pose": [-0.413, -0.080, 0.094, 0.0, 3.14, 0.0],
-    "approach_z_offset": 0.15,
+    "midair_joints": [-172.0, -134.0, -77.0, -58.0, 89.0, -14.72],
+    "pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0],
     "waypoint_c_joints": [-26.66, -76.09, -89.12, -99.54, 88.68, 154.01],
     "place_positions": {
       "Zone_A": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0], [0.065, -0.318, 0.174, 0.0, 3.14, 0.0], [-0.015, -0.426, 0.174, 2.20, 2.26, 0.0]],
@@ -50,16 +49,6 @@
           "timeout_ms": 60000
         },
         {
-          "id": "pick_approach",
-          "skill": "move_linear",
-          "executor": "robot",
-          "params": {
-            "target_pose": "{{pick_pose}}",
-            "z_offset": "{{approach_z_offset}}"
-          },
-          "timeout_ms": 30000
-        },
-        {
           "id": "pick_descend",
           "skill": "move_linear",
           "executor": "robot",
@@ -83,16 +72,6 @@
     {
       "name": "transition",
       "steps": [
-        {
-          "id": "pick_retract_up",
-          "skill": "move_linear",
-          "executor": "robot",
-          "params": {
-            "target_pose": "{{pick_pose}}",
-            "z_offset": "{{approach_z_offset}}"
-          },
-          "timeout_ms": 30000
-        },
         {
           "id": "go_midair_2",
           "skill": "move_joint",
@@ -128,8 +107,7 @@
           "params": {
             "positions_var": "place_positions",
             "key": "{{label_data.label}}",
-            "default_key": "default",
-            "z_offset": "{{approach_z_offset}}"
+            "default_key": "default"
           },
           "store_result": "place_target",
           "timeout_ms": 30000
@@ -159,16 +137,6 @@
       "name": "end_midair",
       "steps": [
         {
-          "id": "place_retract_up",
-          "skill": "move_linear",
-          "executor": "robot",
-          "params": {
-            "target_pose": "{{place_target.target_pose}}",
-            "z_offset": "{{approach_z_offset}}"
-          },
-          "timeout_ms": 30000
-        },
-        {
           "id": "go_midair_3",
           "skill": "move_joint",
           "executor": "robot",
@@ -196,6 +164,20 @@
             "value": false
           },
           "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "return_waypoint_c",
+      "steps": [
+        {
+          "id": "go_return_waypoint_c",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{waypoint_c_joints}}"
+          },
+          "timeout_ms": 30000
         }
       ]
     }
@@ -230,8 +212,20 @@
       "to_state": "place"
     },
     {
-      "type": "sequential",
+      "type": "conditional",
       "from_state": "place",
+      "to_state": "return_waypoint_c",
+      "condition": "{{label_data.label}} == 'Zone_C'"
+    },
+    {
+      "type": "conditional",
+      "from_state": "place",
+      "to_state": "end_midair",
+      "condition": "{{label_data.label}} != 'Zone_C'"
+    },
+    {
+      "type": "sequential",
+      "from_state": "return_waypoint_c",
       "to_state": "end_midair"
     }
   ]

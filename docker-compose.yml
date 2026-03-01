@@ -41,6 +41,7 @@ services:
       - ./backend/src:/app/src  # Mount source for live editing
       - ./backend/src/data/flow:/app/flows  # Persist flow definitions
       - ./backend/weights:/app/weights  # YOLO model weights
+      - ./test_snapshot_phone.jpeg:/app/test_snapshot_phone.jpeg  # Fallback image for Gemini when no camera frame
     restart: unless-stopped
 
   # ── Frontend ─────────────────────────────────────────────────

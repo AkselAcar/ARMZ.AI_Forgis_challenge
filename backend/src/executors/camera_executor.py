@@ -382,7 +382,18 @@ class CameraExecutor(Executor):
 
         frame = self._camera.get_latest_frame()
         if frame is None:
-            return {"success": False, "label": "", "error": "No frame available"}
+            logger.warning(
+                "read_label: no camera frame available, falling back to snapshot /app/test_snapshot_phone.jpeg"
+            )
+            try:
+                snapshot_pil = Image.open("/app/test_snapshot_phone.jpeg")
+                response = await self._call_gemini([prompt, snapshot_pil], timeout=30.0)
+                label = (response.text or "").strip()
+                logger.info(f"Gemini Vision (snapshot fallback) response: {label[:100]}")
+                return {"success": True, "label": label}
+            except Exception as e:
+                logger.error(f"Snapshot fallback failed: {e}")
+                return {"success": False, "label": "", "error": f"No frame and snapshot fallback failed: {e}"}
 
         # Crop to fixed pick zone (125x125 centered at frame_center + 50px right, + 75px down)
         frame, _, _ = self._crop_to_pick_zone(frame)

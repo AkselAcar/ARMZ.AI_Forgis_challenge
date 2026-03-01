@@ -1,0 +1,212 @@
+{
+  "id": "automated-pick-and-place",
+  "name": "Automated Pick and Place",
+  "initial_state": "move_to_home",
+  "loop": false,
+  "variables": {
+    "place_positions": {
+      "Zone_A": [
+        [
+          -0.041,
+          -0.318,
+          0.174,
+          0.0,
+          3.14,
+          0.0
+        ],
+        [
+          0.065,
+          -0.318,
+          0.174,
+          0.0,
+          3.14,
+          0.0
+        ],
+        [
+          -0.015,
+          -0.426,
+          0.174,
+          2.2,
+          2.26,
+          0.0
+        ]
+      ],
+      "Zone_B": [
+        [
+          0.248,
+          -0.288,
+          0.174,
+          2.2,
+          2.26,
+          0.0
+        ],
+        [
+          0.248,
+          -0.353,
+          0.174,
+          2.2,
+          2.26,
+          0.0
+        ],
+        [
+          0.352,
+          -0.31,
+          0.174,
+          0.0,
+          3.14,
+          0.0
+        ]
+      ],
+      "Zone_C": [
+        [
+          0.386,
+          -0.082,
+          0.174,
+          0.0,
+          3.14,
+          0.0
+        ],
+        [
+          0.27,
+          -0.093,
+          0.174,
+          2.2,
+          2.26,
+          0.0
+        ],
+        [
+          0.27,
+          -0.008,
+          0.174,
+          2.2,
+          2.26,
+          0.0
+        ]
+      ],
+      "default": [
+        [
+          -0.00324,
+          -0.3789,
+          0.217,
+          3.14,
+          0.0,
+          0.0
+        ]
+      ]
+    }
+  },
+  "states": [
+    {
+      "name": "move_to_home",
+      "steps": [
+        {
+          "id": "s1",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [
+              -172.0,
+              -134.0,
+              -77.0,
+              -58.0,
+              89.0,
+              -14.72
+            ]
+          },
+          "store_result": null,
+          "error_handling": {
+            "strategy": "stop",
+            "max_retries": 3,
+            "retry_delay_ms": 1000,
+            "fallback_skill": null
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "perform_pick_and_place",
+      "steps": [
+        {
+          "id": "s2",
+          "skill": "pick_and_place",
+          "executor": "robot",
+          "params": {
+            "pick_pose": [
+              -0.449,
+              0.05,
+              0.103,
+              0.0,
+              3.14,
+              0.0
+            ],
+            "positions_var": "place_positions",
+            "default_zone": "default",
+            "waypoint_c_joints": [
+              -26.66,
+              -76.09,
+              -89.12,
+              -99.54,
+              88.68,
+              154.01
+            ],
+            "waypoint_c_zone": "Zone_C",
+            "label_prompt": "Read the product label in the image. Map it to one of these zones: Zone_A = MXP-30, Zone_B = MXP Speed, Zone_C = MXP Torque. Return ONLY the zone name (Zone_A, Zone_B, or Zone_C), nothing else. If you are unsure, return the most likely zone.",
+            "approach_z_offset": 0.15,
+            "vacuum_pin": 0
+          },
+          "store_result": null,
+          "error_handling": {
+            "strategy": "stop",
+            "max_retries": 3,
+            "retry_delay_ms": 1000,
+            "fallback_skill": null
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "return_to_home",
+      "steps": [
+        {
+          "id": "s3",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": [
+              -172.0,
+              -134.0,
+              -77.0,
+              -58.0,
+              89.0,
+              -14.72
+            ]
+          },
+          "store_result": null,
+          "error_handling": {
+            "strategy": "stop",
+            "max_retries": 3,
+            "retry_delay_ms": 1000,
+            "fallback_skill": null
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "sequential",
+      "from_state": "move_to_home",
+      "to_state": "perform_pick_and_place",
+      "condition": null
+    },
+    {
+      "type": "sequential",
+      "from_state": "perform_pick_and_place",
+      "to_state": "return_to_home",
+      "condition": null
+    }
+  ]
+}
