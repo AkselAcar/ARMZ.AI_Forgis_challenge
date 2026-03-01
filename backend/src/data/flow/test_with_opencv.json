@@ -1,0 +1,177 @@
+{
+  "id": "step6_fast_conveyor_pick_robust",
+  "name": "Step 6: Fast Conveyor Pick (Robust Vision)",
+  "initial_state": "hover_wait",
+  "loop": true,
+  "variables": {
+    "hover_joints": [-172.0, -134.0, -77.0, -58.0, 89.0, -14.72],
+    "pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0],
+    "approach_z_offset": 0.15,
+    "place_positions": {
+      "Zone_A": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0], [0.065, -0.318, 0.174, 0.0, 3.14, 0.0], [-0.015, -0.426, 0.174, 2.20, 2.26, 0.0]]
+    }
+  },
+  "states": [
+    {
+      "name": "hover_wait",
+      "steps": [
+        {
+          "id": "go_hover",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{hover_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "vision_check",
+      "steps": [
+        {
+          "id": "detect_box",
+          "skill": "detect_fast_opencv",
+          "executor": "camera",
+          "params": {},
+          "store_result": "box_detected",
+          "timeout_ms": 60000
+        }
+      ]
+    },
+    {
+      "name": "execute_pick",
+      "steps": [
+        {
+          "id": "pick_descend_fast",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_on",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": true
+          },
+          "timeout_ms": 5000
+        }
+      ]
+    },
+    {
+      "name": "place",
+      "steps": [
+        {
+          "id": "pick_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "place_calculate",
+          "skill": "palletize",
+          "executor": "robot",
+          "params": {
+            "positions_var": "place_positions",
+            "key": "Zone_A",
+            "default_key": "Zone_A",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "store_result": "place_target",
+          "timeout_ms": 10000
+        },
+        {
+          "id": "place_approach",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "place_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_off",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": false
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "place_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "end_cycle",
+      "steps": [
+        {
+          "id": "return_to_hover",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{hover_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "sequential",
+      "from_state": "hover_wait",
+      "to_state": "vision_check"
+    },
+    {
+      "type": "conditional",
+      "from_state": "vision_check",
+      "to_state": "vision_check",
+      "condition": "{{box_detected}} == false"
+    },
+    {
+      "type": "conditional",
+      "from_state": "vision_check",
+      "to_state": "execute_pick",
+      "condition": "{{box_detected}} == true"
+    },
+    {
+      "type": "sequential",
+      "from_state": "execute_pick",
+      "to_state": "place"
+    },
+    {
+      "type": "sequential",
+      "from_state": "place",
+      "to_state": "end_cycle"
+    }
+  ]
+}
