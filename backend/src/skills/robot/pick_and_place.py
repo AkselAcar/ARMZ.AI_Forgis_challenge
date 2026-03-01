@@ -4,11 +4,13 @@ Full cycle:
   1.  Move to pick pose
   2.  Vacuum ON
   3.  Read label via Gemini → determine zone
-  4.  Pick next place pose from zone list (wraps around when exhausted)
-  5.  Optional: move to waypoint (Zone_C detour)
-  6.  Move to place pose
-  7.  Vacuum OFF
-  8.  Optional: Zone_C return waypoint (avoid collision)
+  4.  Lift up in Z above pick pose
+  5.  Pick next place pose from zone list (wraps around when exhausted)
+  6.  Optional: move to waypoint (Zone_C detour)
+  7.  Move to place pose
+  8.  Vacuum OFF
+  9.  Optional: Zone_C return waypoint (avoid collision)
+  10. Return to pick pose
 """
 
 import asyncio
@@ -61,6 +63,12 @@ class PickAndPlaceParams(BaseModel):
     label_prompt: str = Field(
         default=_DEFAULT_PROMPT,
         description="Gemini prompt for zone classification",
+    )
+    lift_z_offset: float = Field(
+        default=0.15,
+        ge=0.01,
+        le=0.5,
+        description="Height to lift straight up after picking before travelling to place (metres)",
     )
     vacuum_pin: int = Field(
         default=0,
@@ -170,7 +178,20 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
             )
             logger.info(f"pick_and_place: Gemini zone = '{zone}'")
 
-            # ── 4. Pick place pose (wrap-around index) ────────────
+            # ── 4. Lift up in Z ───────────────────────────────────
+            logger.info("pick_and_place: lifting up %.3fm", params.lift_z_offset)
+            lift_pose = list(pick)
+            lift_pose[2] += params.lift_z_offset
+            ok = await robot.move_linear(
+                pose=lift_pose,
+                acceleration=params.acceleration,
+                velocity=params.pick_velocity,
+            )
+            if not ok:
+                await io.set_digital_output(params.vacuum_pin, False)
+                return SkillResult.fail("Failed to lift after pick")
+
+            # ── 5. Pick place pose (wrap-around index) ────────────
             positions_map = context.get_variable(params.positions_var)
             if not isinstance(positions_map, dict):
                 await io.set_digital_output(params.vacuum_pin, False)
@@ -197,7 +218,7 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                 f"next={indices[matched_key] % len(positions_list)})"
             )
 
-            # ── 5. Zone_C waypoint detour (optional) ─────────────
+            # ── 6. Zone_C waypoint detour (optional) ─────────────
             if (
                 params.waypoint_c_joints
                 and self._normalize_key(matched_key)
@@ -214,7 +235,7 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                     await io.set_digital_output(params.vacuum_pin, False)
                     return SkillResult.fail("Failed to reach Zone_C waypoint")
 
-            # ── 6. Move to place ──────────────────────────────────
+            # ── 7. Move to place ──────────────────────────────────
             logger.info("pick_and_place: moving to place pose")
             ok = await robot.move_linear(
                 pose=place,
@@ -225,12 +246,12 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                 await io.set_digital_output(params.vacuum_pin, False)
                 return SkillResult.fail("Failed to reach place pose")
 
-            # ── 7. Vacuum OFF ─────────────────────────────────────
+            # ── 8. Vacuum OFF ─────────────────────────────────────
             logger.info("pick_and_place: vacuum OFF (pin %d)", params.vacuum_pin)
             await io.set_digital_output(params.vacuum_pin, False)
             await asyncio.sleep(params.vacuum_settle_s)
 
-            # ── 8. Zone_C return waypoint (avoid collision) ───────
+            # ── 9. Zone_C return waypoint (avoid collision) ───────
             if (
                 params.waypoint_c_joints
                 and self._normalize_key(matched_key)
@@ -245,6 +266,25 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                 )
                 if not ok:
                     return SkillResult.fail("Failed to reach Zone_C return waypoint")
+
+            # ── 10. Return to pick pose (via lift height) ─────────
+            logger.info("pick_and_place: returning to lift height above pick")
+            ok = await robot.move_linear(
+                pose=lift_pose,
+                acceleration=params.acceleration,
+                velocity=params.pick_velocity,
+            )
+            if not ok:
+                return SkillResult.fail("Failed to return to lift height above pick")
+
+            logger.info("pick_and_place: descending to pick pose")
+            ok = await robot.move_linear(
+                pose=pick,
+                acceleration=params.acceleration,
+                velocity=params.pick_velocity,
+            )
+            if not ok:
+                return SkillResult.fail("Failed to return to pick pose")
 
             logger.info("pick_and_place: cycle complete (zone='%s')", matched_key)
             return SkillResult.ok({
