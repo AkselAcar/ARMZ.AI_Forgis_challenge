@@ -1,16 +1,18 @@
 """Pick-and-place compound skill with Gemini vision zone routing.
 
 Full cycle:
-  1.  Move to pick pose
-  2.  Vacuum ON
-  3.  Read label via Gemini → determine zone
-  4.  Lift up in Z above pick pose
+  0.  Wait for box detection (camera ROI)
+  1.  Vacuum ON + Move_linear descend to pick pose (simultaneous)
+  2.  Read label via Gemini → determine zone
+  3.  Lift up in Z above pick pose
+  4.  Move_joint to hover (safe transit – avoids self-collision)
   5.  Pick next place pose from zone list (wraps around when exhausted)
-  6.  Optional: move to waypoint (Zone_C detour)
-  7.  Move to place pose
+  6.  Optional: move_joint to waypoint (Zone_C detour)
+  7.  Move_linear to place pose
   8.  Vacuum OFF
-  9.  Optional: Zone_C return waypoint (avoid collision)
-  10. Return to pick pose
+  9.  Lift up in Z above place pose
+  10. Optional: Zone_C return waypoint (avoid collision)
+  11. Move_joint back to hover
 """
 
 import asyncio
@@ -42,6 +44,15 @@ class PickAndPlaceParams(BaseModel):
         max_length=6,
         description="Pick target pose [x, y, z, rx, ry, rz] in metres and radians",
     )
+    hover_joints_deg: list[float] = Field(
+        default=[-122, -109, -44, -112, 90, -14.73],
+        min_length=6,
+        max_length=6,
+        description=(
+            "Safe transit joint configuration in degrees. The robot moves here "
+            "via move_joint between pick and place to avoid self-collision."
+        ),
+    )
     positions_var: str = Field(
         default="place_positions",
         description="Flow variable name containing a dict of zone -> list of poses",
@@ -65,8 +76,8 @@ class PickAndPlaceParams(BaseModel):
         description="Gemini prompt for zone classification",
     )
     lift_z_offset: float = Field(
-        default=0.01,
-        ge=0.0,
+        default=0.15,
+        ge=0.01,
         le=0.5,
         description="Height to lift straight up after picking before travelling to place (metres)",
     )
@@ -99,6 +110,12 @@ class PickAndPlaceParams(BaseModel):
         ge=0.01,
         le=5.0,
         description="Tool acceleration (m/s²)",
+    )
+    transit_velocity: float = Field(
+        default=1.05,
+        ge=0.01,
+        le=2.0,
+        description="Joint velocity for hover / waypoint transit moves (rad/s)",
     )
 
 
@@ -149,6 +166,16 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
         camera = context.get_executor("camera")
 
         pick = list(params.pick_pose)
+        hover_rad = [math.radians(d) for d in params.hover_joints_deg]
+
+        async def _move_to_hover(label: str = "hover") -> bool:
+            """Move to safe hover config via joint-space (no self-collision)."""
+            logger.info("pick_and_place: move_joint → %s", label)
+            return await robot.move_joint(
+                target_rad=hover_rad,
+                acceleration=params.acceleration,
+                velocity=params.transit_velocity,
+            )
 
         try:
             # ── 0. Wait for box detection ─────────────────────────
@@ -171,7 +198,7 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                     f"No box detected within {max_wait_s}s timeout"
                 )
 
-            # ── 1. Vacuum ON + Move to pick (simultaneous) ───────
+            # ── 1. Vacuum ON + Descend to pick (simultaneous) ────
             #   Turn vacuum on immediately so suction is ready by
             #   the time the end-effector reaches the box.
             logger.info("pick_and_place: vacuum ON (pin %d) + descending to pick", params.vacuum_pin)
@@ -198,9 +225,9 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
             logger.info(f"pick_and_place: Gemini zone = '{zone}'")
 
             # ── 4. Lift up in Z ───────────────────────────────────
-            logger.info("pick_and_place: lifting up %.3fm", params.lift_z_offset)
             lift_pose = list(pick)
             lift_pose[2] += params.lift_z_offset
+            logger.info("pick_and_place: lifting up %.3fm", params.lift_z_offset)
             ok = await robot.move_linear(
                 pose=lift_pose,
                 acceleration=params.acceleration,
@@ -210,7 +237,12 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                 await io.set_digital_output(params.vacuum_pin, False)
                 return SkillResult.fail("Failed to lift after pick")
 
-            # ── 5. Pick place pose (wrap-around index) ────────────
+            # ── 5. Move to hover (safe transit) ───────────────────
+            if not await _move_to_hover("hover (pick→place transit)"):
+                await io.set_digital_output(params.vacuum_pin, False)
+                return SkillResult.fail("Failed to reach hover after lift")
+
+            # ── 6. Pick place pose (wrap-around index) ────────────
             positions_map = context.get_variable(params.positions_var)
             if not isinstance(positions_map, dict):
                 await io.set_digital_output(params.vacuum_pin, False)
@@ -237,25 +269,25 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                 f"next={indices[matched_key] % len(positions_list)})"
             )
 
-            # ── 6. Zone_C waypoint detour (optional) ─────────────
+            # ── 7. Zone_C waypoint detour (optional) ─────────────
             if (
                 params.waypoint_c_joints
                 and self._normalize_key(matched_key)
                 == self._normalize_key(params.waypoint_c_zone)
             ):
-                logger.info("pick_and_place: moving to Zone_C waypoint")
+                logger.info("pick_and_place: move_joint → Zone_C waypoint")
                 target_rad = [math.radians(d) for d in params.waypoint_c_joints]
                 ok = await robot.move_joint(
                     target_rad=target_rad,
                     acceleration=params.acceleration,
-                    velocity=1.05,
+                    velocity=params.transit_velocity,
                 )
                 if not ok:
                     await io.set_digital_output(params.vacuum_pin, False)
                     return SkillResult.fail("Failed to reach Zone_C waypoint")
 
-            # ── 7. Move to place ──────────────────────────────────
-            logger.info("pick_and_place: moving to place pose")
+            # ── 8. Move to place ──────────────────────────────────
+            logger.info("pick_and_place: move_linear → place pose")
             ok = await robot.move_linear(
                 pose=place,
                 acceleration=params.acceleration,
@@ -265,45 +297,42 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
                 await io.set_digital_output(params.vacuum_pin, False)
                 return SkillResult.fail("Failed to reach place pose")
 
-            # ── 8. Vacuum OFF ─────────────────────────────────────
+            # ── 9. Vacuum OFF ─────────────────────────────────────
             logger.info("pick_and_place: vacuum OFF (pin %d)", params.vacuum_pin)
             await io.set_digital_output(params.vacuum_pin, False)
             await asyncio.sleep(params.vacuum_settle_s)
 
-            # ── 9. Zone_C return waypoint (avoid collision) ───────
+            # ── 10. Lift up above place ───────────────────────────
+            place_lift = list(place)
+            place_lift[2] += params.lift_z_offset
+            logger.info("pick_and_place: lifting above place pose")
+            ok = await robot.move_linear(
+                pose=place_lift,
+                acceleration=params.acceleration,
+                velocity=params.place_velocity,
+            )
+            if not ok:
+                return SkillResult.fail("Failed to lift after place")
+
+            # ── 11. Zone_C return waypoint (avoid collision) ──────
             if (
                 params.waypoint_c_joints
                 and self._normalize_key(matched_key)
                 == self._normalize_key(params.waypoint_c_zone)
             ):
-                logger.info("pick_and_place: returning via Zone_C waypoint")
+                logger.info("pick_and_place: move_joint → Zone_C return waypoint")
                 target_rad = [math.radians(d) for d in params.waypoint_c_joints]
                 ok = await robot.move_joint(
                     target_rad=target_rad,
                     acceleration=params.acceleration,
-                    velocity=1.05,
+                    velocity=params.transit_velocity,
                 )
                 if not ok:
                     return SkillResult.fail("Failed to reach Zone_C return waypoint")
 
-            # ── 10. Return to pick pose (via lift height) ─────────
-            logger.info("pick_and_place: returning to lift height above pick")
-            ok = await robot.move_linear(
-                pose=lift_pose,
-                acceleration=params.acceleration,
-                velocity=params.pick_velocity,
-            )
-            if not ok:
-                return SkillResult.fail("Failed to return to lift height above pick")
-
-            logger.info("pick_and_place: descending to pick pose")
-            ok = await robot.move_linear(
-                pose=pick,
-                acceleration=params.acceleration,
-                velocity=params.pick_velocity,
-            )
-            if not ok:
-                return SkillResult.fail("Failed to return to pick pose")
+            # ── 12. Return to hover (safe end) ────────────────────
+            if not await _move_to_hover("hover (end of cycle)"):
+                return SkillResult.fail("Failed to return to hover")
 
             logger.info("pick_and_place: cycle complete (zone='%s')", matched_key)
             return SkillResult.ok({

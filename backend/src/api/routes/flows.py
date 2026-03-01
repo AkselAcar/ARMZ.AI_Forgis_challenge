@@ -589,7 +589,7 @@ provides different ones.
 "pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0]
 
 ### Standard midair/home joint position (safe transit pose)
-"midair_joints": [-172.0, -136.01, -77.93, -58.64, 89.0, -55.0]
+"midair_joints": [-172.0, -136.09, -77.93, -59.00, 89.0, -55.0]
 
 ### Standard waypoint for Zone_C (joint detour to avoid collision)
 "waypoint_c_joints": [-26.66, -76.09, -89.12, -99.54, 88.68, 154.01]

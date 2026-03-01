@@ -569,14 +569,14 @@ class CameraExecutor(Executor):
         white_pixels = int(cv2.countNonZero(binary))
 
         # 5. Decision
-        detected = white_pixels > 500
+        detected = white_pixels > 150
 
         # 6. ALWAYS publish to /box_detection (live decision stream)
         detection_data = {
             "box_detected": detected,
             "method": "opencv_fast",
             "white_pixels": white_pixels,
-            "threshold": 500,
+            "threshold": 150,
             "roi": [x1, y1, x2, y2],
         }
         if detected:
