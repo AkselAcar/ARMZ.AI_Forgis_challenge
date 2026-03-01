@@ -4,7 +4,7 @@
   "initial_state": "hover_wait",
   "loop": true,
   "variables": {
-    "hover_joints": [-172.0, -134.0, -77.0, -58.0, 89.0, -14.72],
+    "hover_joints": [-172.0, -136.01, -77.93, -58.64, 89.0, -55.0],
     "pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0],
     "approach_z_offset": 0.15,
     "place_positions": {
@@ -43,15 +43,6 @@
       "name": "execute_pick",
       "steps": [
         {
-          "id": "pick_descend_fast",
-          "skill": "move_linear",
-          "executor": "robot",
-          "params": {
-            "target_pose": "{{pick_pose}}"
-          },
-          "timeout_ms": 30000
-        },
-        {
           "id": "vacuum_on",
           "skill": "io_set_digital_output",
           "executor": "io_robot",
@@ -60,6 +51,17 @@
             "value": true
           },
           "timeout_ms": 5000
+        },
+        {
+          "id": "pick_descend_fast",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "velocity": 1.0,
+            "acceleration": 3.0
+          },
+          "timeout_ms": 30000
         }
       ]
     },
@@ -155,13 +157,13 @@
       "type": "conditional",
       "from_state": "vision_check",
       "to_state": "vision_check",
-      "condition": "{{box_detected}} == false"
+      "condition": "{{box_detected.detected}} == false"
     },
     {
       "type": "conditional",
       "from_state": "vision_check",
       "to_state": "execute_pick",
-      "condition": "{{box_detected}} == true"
+      "condition": "{{box_detected.detected}} == true"
     },
     {
       "type": "sequential",

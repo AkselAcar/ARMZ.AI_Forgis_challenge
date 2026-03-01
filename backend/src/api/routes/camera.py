@@ -151,7 +151,7 @@ async def continuous_detection_loop():
                 
         # Since OpenCV is so fast, we can check 20 times a second (0.05s)
         # to catch that fast-moving conveyor belt!
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.01)
 
 @router.post("/auto-detect/start")
 async def start_auto_detect():
