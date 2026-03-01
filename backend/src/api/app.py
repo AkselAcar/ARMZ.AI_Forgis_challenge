@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routes import flows_router, skills_router, camera_router
 from .routes.flows import set_flow_manager
-from .routes.camera import set_camera_executor
+from .routes.camera import set_camera_executor, set_camera_flow_manager
 from .websocket import WebSocketManager
 
 if TYPE_CHECKING:
@@ -52,6 +52,8 @@ def create_app(
         # Inject camera executor if available
         if camera_executor:
             set_camera_executor(camera_executor)
+        # Let auto-detect trigger flows
+        set_camera_flow_manager(flow_manager)
         yield
         logger.info("FastAPI application shutting down")
 

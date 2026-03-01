@@ -65,8 +65,8 @@ class PickAndPlaceParams(BaseModel):
         description="Gemini prompt for zone classification",
     )
     lift_z_offset: float = Field(
-        default=0.15,
-        ge=0.01,
+        default=0.01,
+        ge=0.0,
         le=0.5,
         description="Height to lift straight up after picking before travelling to place (metres)",
     )
@@ -151,20 +151,39 @@ class PickAndPlaceSkill(Skill[PickAndPlaceParams]):
         pick = list(params.pick_pose)
 
         try:
-            # ── 1. Move to pick ───────────────────────────────────
-            logger.info("pick_and_place: moving to pick pose")
+            # ── 0. Wait for box detection ─────────────────────────
+            logger.info("pick_and_place: waiting for box in camera ROI…")
+            max_wait_s = 120          # give up after 2 minutes
+            poll_interval = 0.05      # 20 Hz polling
+            elapsed = 0.0
+            detected = False
+            while elapsed < max_wait_s:
+                detected = await camera.detect_fast_opencv()
+                if detected:
+                    logger.info("pick_and_place: box detected! Starting pick cycle.")
+                    break
+                await asyncio.sleep(poll_interval)
+                elapsed += poll_interval
+
+            if not detected:
+                logger.warning("pick_and_place: no box detected after %.0fs — aborting", max_wait_s)
+                return SkillResult.fail(
+                    f"No box detected within {max_wait_s}s timeout"
+                )
+
+            # ── 1. Vacuum ON + Move to pick (simultaneous) ───────
+            #   Turn vacuum on immediately so suction is ready by
+            #   the time the end-effector reaches the box.
+            logger.info("pick_and_place: vacuum ON (pin %d) + descending to pick", params.vacuum_pin)
+            await io.set_digital_output(params.vacuum_pin, True)
             ok = await robot.move_linear(
                 pose=pick,
                 acceleration=params.acceleration,
                 velocity=params.pick_velocity,
             )
             if not ok:
+                await io.set_digital_output(params.vacuum_pin, False)
                 return SkillResult.fail("Failed to reach pick pose")
-
-            # ── 2. Vacuum ON ──────────────────────────────────────
-            logger.info("pick_and_place: vacuum ON (pin %d)", params.vacuum_pin)
-            await io.set_digital_output(params.vacuum_pin, True)
-            await asyncio.sleep(params.vacuum_settle_s)
 
             # ── 3. Read label via Gemini ──────────────────────────
             logger.info("pick_and_place: reading label via Gemini")

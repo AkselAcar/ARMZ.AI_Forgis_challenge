@@ -541,54 +541,54 @@ class CameraExecutor(Executor):
             "last_detection": self._last_bbox.to_dict() if self._last_bbox else None,
         }
 
-    # Add this inside your CameraExecutor class
+    # --- Fast OpenCV detection ---
     async def detect_fast_opencv(self) -> bool:
         """
         High-speed OpenCV detection looking for a white label on a dark belt.
+
+        Always publishes the result to /box_detection so the topic acts
+        as a live decision stream (both detected=true and detected=false).
         """
         frame = self._camera.get_latest_frame()
         if frame is None:
             return False
 
         # 1. Define the Trigger Zone (ROI)
-        # Using the coordinates we found earlier (adjust if needed)
         x1, y1 = 230, 220  # Top-left corner
         x2, y2 = 330, 300  # Bottom-right corner
-        
-        # Crop the frame to just this box
+
         roi = frame[y1:y2, x1:x2]
 
         # 2. Convert to Grayscale
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
-        # 3. Apply Binary Threshold
-        # Anything darker than 150 becomes black (0). 
-        # Anything brighter (the white label) becomes white (255).
+        # 3. Binary threshold — bright pixels (label) become white
         _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
 
-        # 4. Count the white pixels
-        white_pixels = cv2.countNonZero(binary)
+        # 4. Count white pixels
+        white_pixels = int(cv2.countNonZero(binary))
 
-        # 5. Trigger Logic
-        # If more than 500 pixels are white, the label has entered the zone!
-        if white_pixels > 500:
-            
-            # Prepare the ROS message
-            detection_data = {
-                "box_detected": True,
-                "method": "opencv_fast",
-                "x": x1 + ((x2 - x1) / 2), # Center of the trigger zone
-                "y": y1 + ((y2 - y1) / 2),
-                "white_pixels": white_pixels
-            }
-            
-            # Publish to ROS
-            if hasattr(self._camera, 'detection_pub'):
-                msg = String()
-                msg.data = json.dumps(detection_data)
-                self._camera.detection_pub.publish(msg)
-                logger.info(f"FAST DETECT! {white_pixels} white pixels found.")
-                
-            return True
-            
-        return False
+        # 5. Decision
+        detected = white_pixels > 500
+
+        # 6. ALWAYS publish to /box_detection (live decision stream)
+        detection_data = {
+            "box_detected": detected,
+            "method": "opencv_fast",
+            "white_pixels": white_pixels,
+            "threshold": 500,
+            "roi": [x1, y1, x2, y2],
+        }
+        if detected:
+            detection_data["x"] = x1 + (x2 - x1) / 2
+            detection_data["y"] = y1 + (y2 - y1) / 2
+
+        if hasattr(self._camera, "detection_pub"):
+            msg = String()
+            msg.data = json.dumps(detection_data)
+            self._camera.detection_pub.publish(msg)
+
+        if detected:
+            logger.info(f"FAST DETECT! {white_pixels} white pixels in ROI.")
+
+        return detected
