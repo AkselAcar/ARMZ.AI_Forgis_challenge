@@ -1,0 +1,220 @@
+{
+  "id": "cv_gemini_conveyor_pick",
+  "name": "CV + Gemini Conveyor Pick",
+  "initial_state": "hover_wait",
+  "loop": true,
+  "variables": {
+    "hover_joints": [-172.0, -136.01, -77.93, -58.64, 89.0, -55.0],
+    "pick_pose": [-0.449, 0.05, 0.103, 0.0, 3.14, 0.0],
+    "approach_z_offset": 0.15,
+    "waypoint_c_joints": [-26.66, -76.09, -89.12, -99.54, 88.68, 154.01],
+    "place_positions": {
+      "Zone_A": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0], [0.065, -0.318, 0.174, 0.0, 3.14, 0.0], [-0.015, -0.426, 0.174, 2.20, 2.26, 0.0]],
+      "Zone_B": [[0.248, -0.288, 0.174, 2.20, 2.26, 0.0], [0.248, -0.353, 0.174, 2.20, 2.26, 0.0], [0.352, -0.310, 0.174, 0.0, 3.14, 0.0]],
+      "Zone_C": [[0.386, -0.082, 0.174, 0.0, 3.14, 0.0], [0.270, -0.093, 0.174, 2.20, 2.26, 0.0], [0.270, -0.008, 0.174, 2.20, 2.26, 0.0]],
+      "default": [[-0.041, -0.318, 0.174, 0.0, 3.14, 0.0]]
+    }
+  },
+  "states": [
+    {
+      "name": "hover_wait",
+      "steps": [
+        {
+          "id": "go_hover",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{hover_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "vision_check",
+      "steps": [
+        {
+          "id": "detect_box",
+          "skill": "detect_fast_opencv",
+          "executor": "camera",
+          "params": {},
+          "store_result": "box_detected",
+          "timeout_ms": 60000
+        }
+      ]
+    },
+    {
+      "name": "execute_pick",
+      "steps": [
+        {
+          "id": "vacuum_on",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": true
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "pick_descend_fast",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "velocity": 1.0,
+            "acceleration": 3.0
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "read_label",
+          "skill": "get_label",
+          "executor": "camera",
+          "params": {
+            "prompt": "Read the product label on the box and map it to one of these zones: Zone_A = MXP-30, Zone_B = MXP Speed, Zone_C = MXP Torque. Return ONLY the zone name (Zone_A, Zone_B, or Zone_C). Return nothing else.",
+            "use_bbox": false
+          },
+          "store_result": "label_data",
+          "timeout_ms": 60000
+        }
+      ]
+    },
+    {
+      "name": "transition",
+      "steps": [
+        {
+          "id": "pick_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{pick_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "waypoint_c",
+      "steps": [
+        {
+          "id": "go_waypoint_c",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{waypoint_c_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "place",
+      "steps": [
+        {
+          "id": "place_approach",
+          "skill": "palletize",
+          "executor": "robot",
+          "params": {
+            "positions_var": "place_positions",
+            "key": "{{label_data.label}}",
+            "default_key": "default",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "store_result": "place_target",
+          "timeout_ms": 30000
+        },
+        {
+          "id": "place_descend",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}"
+          },
+          "timeout_ms": 30000
+        },
+        {
+          "id": "vacuum_off",
+          "skill": "io_set_digital_output",
+          "executor": "io_robot",
+          "params": {
+            "pin": 0,
+            "value": false
+          },
+          "timeout_ms": 5000
+        },
+        {
+          "id": "place_retract_up",
+          "skill": "move_linear",
+          "executor": "robot",
+          "params": {
+            "target_pose": "{{place_target.target_pose}}",
+            "z_offset": "{{approach_z_offset}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    },
+    {
+      "name": "end_cycle",
+      "steps": [
+        {
+          "id": "return_to_hover",
+          "skill": "move_joint",
+          "executor": "robot",
+          "params": {
+            "target_joints_deg": "{{hover_joints}}"
+          },
+          "timeout_ms": 30000
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "type": "sequential",
+      "from_state": "hover_wait",
+      "to_state": "vision_check"
+    },
+    {
+      "type": "conditional",
+      "from_state": "vision_check",
+      "to_state": "vision_check",
+      "condition": "{{box_detected.detected}} == false"
+    },
+    {
+      "type": "conditional",
+      "from_state": "vision_check",
+      "to_state": "execute_pick",
+      "condition": "{{box_detected.detected}} == true"
+    },
+    {
+      "type": "sequential",
+      "from_state": "execute_pick",
+      "to_state": "transition"
+    },
+    {
+      "type": "conditional",
+      "from_state": "transition",
+      "to_state": "waypoint_c",
+      "condition": "{{label_data.label}} == 'Zone_C'"
+    },
+    {
+      "type": "conditional",
+      "from_state": "transition",
+      "to_state": "place",
+      "condition": "{{label_data.label}} != 'Zone_C'"
+    },
+    {
+      "type": "sequential",
+      "from_state": "waypoint_c",
+      "to_state": "place"
+    },
+    {
+      "type": "sequential",
+      "from_state": "place",
+      "to_state": "end_cycle"
+    }
+  ]
+}

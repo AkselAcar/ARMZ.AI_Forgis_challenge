@@ -22,15 +22,15 @@ class MoveLinearParams(BaseModel):
         description="Vertical offset added to Z component before execution (meters). Positive = up.",
     )
     acceleration: float = Field(
-        default=1.2,
+        default=2.0,
         ge=0.01,
         le=3.0,
         description="Tool acceleration in m/s²",
     )
     velocity: float = Field(
-        default=0.8,
+        default=1.0,
         ge=0.01,
-        le=1.0,
+        le=1.2,
         description="Tool velocity in m/s",
     )
 

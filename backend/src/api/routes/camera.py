@@ -129,3 +129,45 @@ async def get_camera_state():
     """Get current camera state."""
     executor = get_executor()
     return executor.get_state_summary()
+
+import asyncio
+
+# Global variables to control the loop
+_auto_detect_task = None
+_auto_detect_running = False
+
+async def continuous_detection_loop():
+    """Runs continuously in the background to monitor for boxes."""
+    global _auto_detect_running
+    executor = get_executor()
+    
+    while _auto_detect_running:
+        if executor.is_ready():
+            try:
+                # Use the fast OpenCV method!
+                await executor.detect_fast_opencv()
+            except Exception as e:
+                pass 
+                
+        # Since OpenCV is so fast, we can check 20 times a second (0.05s)
+        # to catch that fast-moving conveyor belt!
+        await asyncio.sleep(0.01)
+
+@router.post("/auto-detect/start")
+async def start_auto_detect():
+    """Starts the background monitoring loop."""
+    global _auto_detect_task, _auto_detect_running
+    
+    if _auto_detect_running:
+        return {"message": "Auto-detection is already running."}
+    
+    _auto_detect_running = True
+    _auto_detect_task = asyncio.create_task(continuous_detection_loop())
+    return {"message": "Auto-detection loop STARTED. Monitoring camera..."}
+
+@router.post("/auto-detect/stop")
+async def stop_auto_detect():
+    """Stops the background monitoring loop."""
+    global _auto_detect_running
+    _auto_detect_running = False
+    return {"message": "Auto-detection loop STOPPED."}

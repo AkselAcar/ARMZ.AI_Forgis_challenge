@@ -8,6 +8,7 @@ import numpy as np
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
 
 
 class CameraNode(Node):
@@ -39,6 +40,8 @@ class CameraNode(Node):
             self._on_image,
             qos,
         )
+
+        self.detection_pub = self.create_publisher(String, '/box_detection', 10)
 
         self.get_logger().info(
             "CameraNode initialized — waiting for /camera/camera/color/image_raw"
